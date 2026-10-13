@@ -260,3 +260,56 @@ export function evaluateStreakStatus(sessions: Array<{ created_at?: string; dura
     lastActiveDate: storedLastDate,
   };
 }
+
+export interface PanicInterventionResult {
+  status: "success" | "fallback" | "error";
+  modelUsed?: string;
+  headline?: string;
+  interventionMessage: string;
+  coachingInsight?: string;
+  quote?: string;
+  author?: string;
+  timestamp?: string;
+}
+
+export async function fetchPanicIntervention(params?: {
+  userName?: string;
+  minutesLeft?: number;
+  focusHours?: number;
+  dailyGoal?: number;
+  streakDays?: number;
+}): Promise<PanicInterventionResult> {
+  const fallbackText = "You are 10 minutes away from finishing. Your future self will thank you. Do you really want to quit?";
+  try {
+    const res = await fetch("/api/coach", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...params,
+        action: "panic_intervention",
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Server returned ${res.status}`);
+    }
+
+    const data = await res.json();
+    return {
+      ...data,
+      interventionMessage: data.interventionMessage || fallbackText,
+    };
+  } catch (err) {
+    console.warn("Client fallback for panic intervention:", err);
+    return {
+      status: "fallback",
+      modelUsed: "local-discipline-engine",
+      headline: "Hold The Line. Don't Surrender.",
+      interventionMessage: fallbackText,
+      coachingInsight: "The friction you feel right now is where your mental resilience is forged. Giving in now only reinforces the habit of quitting.",
+      quote: "At the end of the day, you will be defined by what you resisted, not what you gave into.",
+      author: "David Goggins",
+      timestamp: new Date().toISOString(),
+    };
+  }
+}

@@ -12,10 +12,27 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(appUrl),
   title: "FlowState — Deep Work & Productivity Dashboard",
   description:
     "Ultra-modern OLED dark theme dashboard for deep focus, task management, and consistency tracking.",
+  openGraph: {
+    title: "FlowState — Deep Work & Productivity Dashboard",
+    description:
+      "Ultra-modern OLED dark theme dashboard for deep focus, task management, and consistency tracking.",
+    url: appUrl,
+    siteName: "FlowState",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "FlowState — Deep Work & Productivity Dashboard",
+    description:
+      "Ultra-modern OLED dark theme dashboard for deep focus, task management, and consistency tracking.",
+  },
 };
 
 export default function RootLayout({

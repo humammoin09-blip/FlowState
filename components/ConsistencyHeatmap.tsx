@@ -17,6 +17,8 @@ import {
   Check,
   AlertCircle,
   WifiOff,
+  ShieldAlert,
+  AlertOctagon,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { calculateConsistencyAnalytics } from "@/lib/discipline-service";
@@ -26,6 +28,21 @@ interface DayStat {
   hours: number;
   tasks: number;
   intensity: number;
+  isPast?: boolean;
+  isToday?: boolean;
+  isMissed?: boolean;
+  dateLabel?: string;
+}
+
+interface MatrixCell {
+  dayIndex: number;
+  intensity: number;
+  hours: string;
+  dateStr: string;
+  formattedDate: string;
+  isPast: boolean;
+  isToday: boolean;
+  isMissed: boolean;
 }
 
 export function ConsistencyHeatmap() {
@@ -41,6 +58,7 @@ export function ConsistencyHeatmap() {
   const [totalMitsCount, setTotalMitsCount] = useState<number>(0);
   const [consistencyScore, setConsistencyScore] = useState<number>(0);
   const [activeStreak, setActiveStreak] = useState<number>(0);
+  const [missedDaysCount, setMissedDaysCount] = useState<number>(0);
 
   const [daysData, setDaysData] = useState<DayStat[]>([
     { day: "Mon", hours: 0, tasks: 0, intensity: 0 },
@@ -52,7 +70,7 @@ export function ConsistencyHeatmap() {
     { day: "Sun", hours: 0, tasks: 0, intensity: 0 },
   ]);
 
-  const [matrixData, setMatrixData] = useState<{ dayIndex: number; intensity: number; hours: string }[]>([]);
+  const [matrixData, setMatrixData] = useState<MatrixCell[]>([]);
 
   useEffect(() => {
     fetchRealAnalytics();
@@ -93,8 +111,10 @@ export function ConsistencyHeatmap() {
       const calculatedHours = Number((currentWeekMins / 60).toFixed(1));
       setTotalFocusHours(calculatedHours);
 
+      const now = new Date();
+      const todayDayIndex = (now.getDay() + 6) % 7; // Mon = 0, ..., Sun = 6
       const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-      const updatedDays = weekDays.map((d) => {
+      const updatedDays = weekDays.map((d, idx) => {
         const hrs = Number((analytics.dayMap[d].mins / 60).toFixed(1));
         let intensity = 0;
         if (hrs >= 6) intensity = 4;
@@ -102,11 +122,18 @@ export function ConsistencyHeatmap() {
         else if (hrs >= 2) intensity = 2;
         else if (hrs > 0) intensity = 1;
 
+        const isPast = idx < todayDayIndex;
+        const isToday = idx === todayDayIndex;
+        const isMissed = isPast && hrs === 0;
+
         return {
           day: d,
           hours: hrs,
           tasks: analytics.dayMap[d].count,
           intensity,
+          isPast,
+          isToday,
+          isMissed,
         };
       });
       setDaysData(updatedDays);
@@ -149,16 +176,65 @@ export function ConsistencyHeatmap() {
         setCompletedMitsCount(completed);
       }
 
-      // 3. Generate 28-Day Matrix from real session distribution or fallback pattern
-      const generatedMatrix = Array.from({ length: 28 }, (_, i) => {
-        const intensity = i % 5; 
+      // 3. Generate 28-Day Matrix mapping actual daily sessions or immutable failure log for past days
+      const sessionMinutesByDate: Record<string, number> = {};
+      if (sessions && sessions.length > 0) {
+        sessions.forEach((s) => {
+          if (!s.created_at) return;
+          let rawTimestamp = s.created_at;
+          if (typeof rawTimestamp === "string" && !rawTimestamp.includes("Z") && !rawTimestamp.includes("+")) {
+            rawTimestamp = rawTimestamp.replace(" ", "T") + "Z";
+          }
+          const d = new Date(rawTimestamp);
+          if (isNaN(d.getTime())) return;
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, "0");
+          const date = String(d.getDate()).padStart(2, "0");
+          const key = `${y}-${m}-${date}`;
+          sessionMinutesByDate[key] = (sessionMinutesByDate[key] || 0) + (s.duration_minutes || 25);
+        });
+      }
+
+      let matrixMissed = 0;
+      const generatedMatrix: MatrixCell[] = Array.from({ length: 28 }, (_, i) => {
+        // Day 28 = today (offset 0), Day 1 = 27 days ago (offset 27)
+        const daysAgo = 27 - i;
+        const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo);
+        const y = targetDate.getFullYear();
+        const m = String(targetDate.getMonth() + 1).padStart(2, "0");
+        const d = String(targetDate.getDate()).padStart(2, "0");
+        const dateKey = `${y}-${m}-${d}`;
+        const formattedDate = targetDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+        const mins = sessionMinutesByDate[dateKey] || 0;
+        const hrs = Number((mins / 60).toFixed(1));
+
+        let intensity = 0;
+        if (hrs >= 6) intensity = 4;
+        else if (hrs >= 4) intensity = 3;
+        else if (hrs >= 2) intensity = 2;
+        else if (hrs > 0) intensity = 1;
+
+        const isPast = daysAgo > 0;
+        const isToday = daysAgo === 0;
+        const isMissed = isPast && hrs === 0;
+
+        if (isMissed) matrixMissed++;
+
         return {
           dayIndex: i + 1,
-          intensity: intensity,
-          hours: (intensity * 1.2).toFixed(1),
+          intensity,
+          hours: hrs.toFixed(1),
+          dateStr: dateKey,
+          formattedDate,
+          isPast,
+          isToday,
+          isMissed,
         };
       });
+
       setMatrixData(generatedMatrix);
+      setMissedDaysCount(matrixMissed);
 
     } catch (err) {
       console.error("Graceful error handling in analytics:", err);
@@ -181,11 +257,19 @@ export function ConsistencyHeatmap() {
       csvContent += `Total Weekly Focus Hours,${totalFocusHours} hrs\n`;
       csvContent += `Weekly Consistency Score,${consistencyScore}%\n`;
       csvContent += `Completed MITs,${completedMitsCount} / ${totalMitsCount}\n`;
-      csvContent += `Active Streak,${activeStreak} Days\n\n`;
+      csvContent += `Active Streak,${activeStreak} Days\n`;
+      csvContent += `Immutable Ledger Missed Days (28-day window),${missedDaysCount}\n\n`;
 
-      csvContent += `Day,Focus Hours,Sessions Logged,Intensity Level\n`;
+      csvContent += `Day,Focus Hours,Sessions Logged,Status,Intensity Level\n`;
       daysData.forEach((d) => {
-        csvContent += `${d.day},${d.hours},${d.tasks},Level ${d.intensity}\n`;
+        const status = d.isMissed
+          ? "MISSED (0h Failure Log)"
+          : d.hours > 0
+          ? "Logged"
+          : d.isToday
+          ? "Today (In Progress)"
+          : "Upcoming";
+        csvContent += `${d.day},${d.hours},${d.tasks},${status},Level ${d.intensity}\n`;
       });
 
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -205,7 +289,10 @@ export function ConsistencyHeatmap() {
     }
   };
 
-  const getHeatmapColor = (intensity: number) => {
+  const getHeatmapColor = (intensity: number, isMissed?: boolean) => {
+    if (isMissed) {
+      return "bg-rose-950/60 border-rose-600/70 text-rose-400 font-bold shadow-[0_0_10px_rgba(244,63,94,0.25)]";
+    }
     switch (intensity) {
       case 0:
         return "bg-slate-900 border-white/5 text-slate-600";
@@ -282,6 +369,16 @@ export function ConsistencyHeatmap() {
               </>
             )}
           </button>
+
+          <div
+            className="flex items-center gap-2 bg-rose-950/40 border border-rose-500/30 px-3.5 py-2 rounded-xl text-xs text-rose-300"
+            title="The Immutable Consistency Ledger permanently records missed days with zero focus"
+          >
+            <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>
+              Immutable Ledger: <strong>{missedDaysCount}</strong> Missed Day{missedDaysCount === 1 ? "" : "s"}
+            </span>
+          </div>
 
           <div className="flex items-center gap-2 bg-slate-900/80 border border-white/10 px-3.5 py-2 rounded-xl text-xs text-slate-300">
             <Calendar className="w-4 h-4 text-emerald-400" />
@@ -448,28 +545,59 @@ export function ConsistencyHeatmap() {
                         <motion.div
                           initial={{ opacity: 0, y: 5 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className="absolute -top-12 z-20 px-2.5 py-1 rounded-xl bg-slate-900 border border-white/20 text-[10px] text-white shadow-xl flex flex-col items-center whitespace-nowrap"
+                          className={`absolute -top-14 z-20 px-2.5 py-1.5 rounded-xl border text-[10px] shadow-xl flex flex-col items-center whitespace-nowrap ${
+                            item.isMissed
+                              ? "bg-rose-950/95 border-rose-500/50 text-rose-200 shadow-[0_0_16px_rgba(244,63,94,0.35)]"
+                              : "bg-slate-900 border-white/20 text-white"
+                          }`}
                         >
-                          <span className="font-bold text-emerald-400">{item.hours} hrs</span>
-                          <span className="text-slate-400">{item.tasks} sessions logged</span>
+                          {item.isMissed ? (
+                            <>
+                              <span className="font-extrabold text-rose-400 flex items-center gap-1">
+                                <AlertOctagon className="w-3 h-3 text-rose-400" /> MISSED DAY • 0.0 hrs
+                              </span>
+                              <span className="text-rose-300/80 text-[9px] font-mono">Immutable Consistency Failure</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="font-bold text-emerald-400">{item.hours} hrs</span>
+                              <span className="text-slate-400">{item.tasks} sessions logged</span>
+                            </>
+                          )}
                         </motion.div>
                       )}
 
                       <div className="w-full max-w-[42px] h-full flex items-end">
-                        <motion.div
-                          initial={{ height: 0 }}
-                          animate={{ height: `${heightPercent}%` }}
-                          transition={{ duration: 0.6, ease: "easeOut" }}
-                          className={`w-full rounded-t-xl transition-all ${
-                            item.hours >= 4
-                              ? "bg-gradient-to-t from-emerald-500 to-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.5)] border-t border-emerald-200"
-                              : "bg-slate-800 group-hover/bar:bg-emerald-500/50 border-t border-white/10"
-                          }`}
-                        />
+                        {item.isMissed ? (
+                          <div className="w-full h-12 rounded-t-xl bg-rose-950/40 border border-dashed border-rose-500/60 flex flex-col items-center justify-center shadow-[0_0_12px_rgba(244,63,94,0.25)] group-hover/bar:bg-rose-950/70 transition-all">
+                            <span className="text-[12px] font-black text-rose-400 leading-none">✕</span>
+                            <span className="text-[7.5px] font-mono font-extrabold text-rose-400/90 tracking-tight mt-0.5 uppercase">MISSED</span>
+                          </div>
+                        ) : (
+                          <motion.div
+                            initial={{ height: 0 }}
+                            animate={{ height: `${heightPercent}%` }}
+                            transition={{ duration: 0.6, ease: "easeOut" }}
+                            className={`w-full rounded-t-xl transition-all ${
+                              item.hours >= 4
+                                ? "bg-gradient-to-t from-emerald-500 to-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.5)] border-t border-emerald-200"
+                                : "bg-slate-800 group-hover/bar:bg-emerald-500/50 border-t border-white/10"
+                            }`}
+                          />
+                        )}
                       </div>
 
-                      <span className={`text-xs font-semibold mt-2 ${item.hours >= 4 ? "text-emerald-400" : "text-slate-400"}`}>
+                      <span
+                        className={`text-xs font-semibold mt-2 flex items-center gap-0.5 ${
+                          item.isMissed
+                            ? "text-rose-400 font-bold"
+                            : item.hours >= 4
+                            ? "text-emerald-400"
+                            : "text-slate-400"
+                        }`}
+                      >
                         {item.day}
+                        {item.isMissed && <span className="text-[9px] text-rose-500 font-black">✕</span>}
                       </span>
                     </div>
                   );
@@ -491,24 +619,46 @@ export function ConsistencyHeatmap() {
                   <motion.div
                     key={cell.dayIndex}
                     whileHover={{ scale: 1.15 }}
-                    className={`h-9 rounded-lg border flex items-center justify-center text-[10px] font-mono cursor-pointer transition-all ${getHeatmapColor(
-                      cell.intensity
-                    )}`}
-                    title={`Day ${cell.dayIndex}: ${cell.hours} focus hours`}
+                    className={`h-9 rounded-lg border flex flex-col items-center justify-center text-[10px] font-mono cursor-pointer transition-all ${
+                      cell.isMissed
+                        ? "bg-rose-950/60 border-rose-600/70 text-rose-400 font-bold shadow-[0_0_10px_rgba(244,63,94,0.25)] hover:border-rose-400 relative"
+                        : getHeatmapColor(cell.intensity)
+                    }`}
+                    title={
+                      cell.isMissed
+                        ? `Day ${cell.dayIndex} (${cell.formattedDate}): MISSED DAY • 0.0h focus logged (Immutable Consistency Ledger)`
+                        : `Day ${cell.dayIndex} (${cell.formattedDate}): ${cell.hours}h focus hours`
+                    }
                   >
-                    {cell.hours}h
+                    {cell.isMissed ? (
+                      <div className="flex items-center gap-0.5 leading-none">
+                        <span className="text-[11px] text-rose-400 font-black">✕</span>
+                        <span className="text-[8px] text-rose-400/90 font-bold">0h</span>
+                      </div>
+                    ) : (
+                      `${cell.hours}h`
+                    )}
                   </motion.div>
                 ))}
               </div>
 
-              <div className="flex items-center justify-center gap-3 text-[11px] text-slate-400 pt-2">
-                <span>Less</span>
-                <div className="flex items-center gap-1.5">
-                  {[0, 1, 2, 3, 4].map((lvl) => (
-                    <div key={lvl} className={`w-3.5 h-3.5 rounded border ${getHeatmapColor(lvl)}`} />
-                  ))}
+              <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 text-[11px] text-slate-400 pt-2">
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-rose-950/40 border border-rose-500/30 text-rose-400 font-semibold">
+                  <div className="w-3.5 h-3.5 rounded border border-rose-500/60 bg-rose-950 text-rose-400 flex items-center justify-center text-[8px] font-black">
+                    ✕
+                  </div>
+                  <span>Missed (0h Failure Log)</span>
                 </div>
-                <span>More (Deep Flow)</span>
+
+                <div className="flex items-center gap-1.5">
+                  <span>Less</span>
+                  <div className="flex items-center gap-1.5">
+                    {[0, 1, 2, 3, 4].map((lvl) => (
+                      <div key={lvl} className={`w-3.5 h-3.5 rounded border ${getHeatmapColor(lvl)}`} />
+                    ))}
+                  </div>
+                  <span>More (Deep Flow)</span>
+                </div>
               </div>
             </div>
           )}
@@ -517,13 +667,13 @@ export function ConsistencyHeatmap() {
         {/* Insights Banner */}
         <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2 text-slate-300">
-            <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+            <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
             <span>
-              <strong>Live Analytics:</strong> Total {totalFocusHours} hours recorded across {activeStreak} active session days. Keep building your consistency!
+              <strong>Immutable Consistency Ledger:</strong> {missedDaysCount} missed day{missedDaysCount === 1 ? "" : "s"} permanently recorded in the 28-day window. Zero-hour days cannot be hidden or forgiven.
             </span>
           </div>
-          <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 flex items-center gap-1">
-            <TrendingUp className="w-3 h-3" /> Fully Dynamic
+          <span className="text-[11px] font-bold text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-lg border border-rose-500/20 flex items-center gap-1">
+            <AlertOctagon className="w-3 h-3" /> Permanent Ledger
           </span>
         </div>
       </div>

@@ -8,15 +8,16 @@ interface CoachRequestBody {
   totalTasks?: number;
   userName?: string;
   tone?: "reality-check" | "tactical" | "stoic";
-  action?: "coach" | "streak_loss";
+  action?: "coach" | "streak_loss" | "panic_intervention";
   previousStreak?: number;
+  minutesLeft?: number;
 }
 
 const FALLBACK_MODELS = [
   process.env.GEMINI_MODEL || "gemini-3.5-flash-lite",
-  "gemini-2.5-flash",
-  "gemini-1.5-flash",
+  "gemini-3.8-flash",
   "gemini-2.0-flash",
+  "gemini-1.5-flash",
 ];
 
 export async function POST(request: Request) {
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
       tone = "reality-check",
       action = "coach",
       previousStreak = 0,
+      minutesLeft = 10,
     } = body;
 
     const apiKey =
@@ -53,6 +55,7 @@ export async function POST(request: Request) {
           userName,
           tone,
           previousStreak,
+          minutesLeft,
         });
 
         if (geminiResult) {
@@ -74,6 +77,7 @@ export async function POST(request: Request) {
       userName,
       tone,
       previousStreak,
+      minutesLeft,
     });
 
     return NextResponse.json(fallbackResponse);
@@ -103,7 +107,7 @@ export async function POST(request: Request) {
 
 async function callGeminiWithFallback(params: {
   apiKey: string;
-  action: "coach" | "streak_loss";
+  action: "coach" | "streak_loss" | "panic_intervention";
   focusHours: number;
   dailyGoal: number;
   streakDays: number;
@@ -112,11 +116,25 @@ async function callGeminiWithFallback(params: {
   userName: string;
   tone: string;
   previousStreak: number;
+  minutesLeft?: number;
 }) {
-  const { apiKey, action, focusHours, dailyGoal, streakDays, completedTasks, totalTasks, userName, tone, previousStreak } = params;
+  const { apiKey, action, focusHours, dailyGoal, streakDays, completedTasks, totalTasks, userName, tone, previousStreak, minutesLeft } = params;
 
   let prompt = "";
-  if (action === "streak_loss") {
+  if (action === "panic_intervention") {
+    prompt = `You are FlowState's elite AI Discipline Coach. The user '${userName}' is inside the Focus Chamber during a high-stakes lockdown session and triggered the Panic Quit button.
+They are close to finishing the session (approx ${minutesLeft || 10} minutes away).
+Generate an intense, urgent, psychological intervention response in pure JSON format to stop them from quitting right now.
+
+Your response MUST provide strictly valid JSON with these keys:
+- "headline": A punchy 3-5 word intervention title (e.g. "Hold The Line", "Resistance Is A Lie").
+- "interventionMessage": Exactly this sentence: "You are 10 minutes away from finishing. Your future self will thank you. Do you really want to quit?"
+- "coachingInsight": 1-2 hard-hitting psychological sentences on pushing past resistance and building self-respect.
+- "quote": A powerful discipline quote from Marcus Aurelius, David Goggins, or Seneca.
+- "author": Author of the quote.
+
+Output strictly valid JSON and nothing else. No markdown fences.`;
+  } else if (action === "streak_loss") {
     prompt = `You are a legendary Stoic Discipline Master and Mental Toughness Coach (combining the spirit of Marcus Aurelius, David Goggins, and Seneca).
 The user '${userName}' just broke their consecutive discipline streak (lost a streak of ${previousStreak > 0 ? previousStreak : "multiple"} days). They opened the app after missing yesterday.
 
@@ -209,7 +227,7 @@ Output strictly valid JSON and nothing else. No markdown fences.`;
 }
 
 function generateLocalDisciplineResponse(params: {
-  action: "coach" | "streak_loss";
+  action: "coach" | "streak_loss" | "panic_intervention";
   focusHours: number;
   dailyGoal: number;
   streakDays: number;
@@ -218,8 +236,22 @@ function generateLocalDisciplineResponse(params: {
   userName: string;
   tone: string;
   previousStreak: number;
+  minutesLeft?: number;
 }) {
   const { action, focusHours, dailyGoal, streakDays, completedTasks, totalTasks, userName, tone, previousStreak } = params;
+
+  if (action === "panic_intervention") {
+    return {
+      status: "fallback",
+      modelUsed: "local-discipline-engine",
+      headline: "Hold The Line. Don't Surrender.",
+      interventionMessage: "You are 10 minutes away from finishing. Your future self will thank you. Do you really want to quit?",
+      coachingInsight: "The resistance you feel in this exact moment is where discipline is built. Quitting resets your neural momentum; pushing through cements unbreakable self-trust.",
+      quote: "At the end of the day, you will be defined by what you resisted, not what you gave into.",
+      author: "David Goggins",
+      timestamp: new Date().toISOString(),
+    };
+  }
 
   if (action === "streak_loss") {
     const quotes = [
