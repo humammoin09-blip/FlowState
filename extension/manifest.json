@@ -1,23 +1,46 @@
 {
   "manifest_version": 3,
-  "name": "FlowState Focus Chamber Companion",
+  "name": "FlowState Blocker",
   "version": "1.0.0",
-  "description": "Chrome Extension companion bridge for FlowState Focus Chamber",
+  "description": "Blocks distracting websites during FlowState deep work sessions.",
   "permissions": [
+    "declarativeNetRequest",
     "storage",
-    "tabs",
-    "activeTab"
+    "tabs"
   ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": [
         "http://localhost:3000/*",
+        "http://localhost:3001/*",
+        "http://localhost/*",
+        "http://127.0.0.1:3000/*",
         "https://*.yourdomain.com/*"
       ],
       "js": [
         "content.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_title": "FlowState Blocker"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "blocked.html",
+        "blocked.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

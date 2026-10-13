@@ -88,6 +88,14 @@ export const DEFAULT_BLOCKED_PATHS: string[] = [
   "youtube.com/shorts",
   "youtube.com/shorts/*",
 ];
+export const DEFAULT_BLOCKED_DOMAINS: string[] = [
+  "instagram.com",
+  "reddit.com",
+  "tiktok.com",
+  "twitter.com",
+  "facebook.com",
+  "youtube.com/shorts",
+];
 
 /**
  * Normalizes a hostname or domain string:
@@ -219,6 +227,7 @@ export function getAppHostname(): string {
  */
 export function broadcastExtensionMessage(type: string, payload: Record<string, unknown> = {}) {
   if (typeof window === "undefined" || !window.location?.origin) return;
+  console.log('[FlowState] Broadcasting:', type, payload);
   try {
     window.postMessage(
       {
@@ -471,6 +480,10 @@ export function PomodoroTimer({
       sessionStorage.removeItem("flowstate_smart_alert_due");
     }
 
+    // Notify extension companion that focus lockdown has ended
+    console.log('[FlowState] Broadcasting LOCKDOWN_END');
+    broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_END");
+
     if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
       new Notification("FlowState Focus Complete! 🎯", {
         body: "Great job! Your focus session is complete.",
@@ -557,6 +570,12 @@ export function PomodoroTimer({
         setTimeLeft(left);
         setTimerActive(true);
         setTimerTime(formatTime(left));
+        if (savedMode === "focus") {
+          console.log('[FlowState] Broadcasting LOCKDOWN_START');
+          broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
+            blockedDomains: DEFAULT_BLOCKED_DOMAINS,
+          });
+        }
       } else {
         handleTimerCompletion(savedMode);
       }
@@ -844,9 +863,9 @@ export function PomodoroTimer({
   };
 
   const toggleTimer = () => {
-    const savedRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
+    const isRunning = timerActive;
 
-    if (savedRunning) {
+    if (isRunning) {
       // Pause
       const savedTargetEndTime = localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
       let left = timeLeft;
@@ -860,19 +879,39 @@ export function PomodoroTimer({
       setTimeLeft(left);
       setTimerActive(false);
       setTimerTime(formatTime(left));
+
+      if (mode === "focus") {
+        console.log('[FlowState] Broadcasting LOCKDOWN_END');
+        broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_END");
+      }
     } else {
       // Start / Resume
-      const timeToUse = timeLeft <= 0 ? modeDurations[mode] : timeLeft;
+      const currentMode = mode || (localStorage.getItem(STORAGE_KEY_MODE) as TimerMode) || "focus";
+      const timeToUse = timeLeft <= 0 ? modeDurations[currentMode] : timeLeft;
       const targetEndTime = Date.now() + timeToUse * 1000;
 
       localStorage.setItem(STORAGE_KEY_TARGET_END_TIME, String(targetEndTime));
       localStorage.setItem(STORAGE_KEY_RUNNING, "true");
-      localStorage.setItem(STORAGE_KEY_MODE, mode);
+      localStorage.setItem(STORAGE_KEY_MODE, currentMode);
       localStorage.removeItem(STORAGE_KEY_REMAINING);
 
       setTimeLeft(timeToUse);
       setTimerActive(true);
       setTimerTime(formatTime(timeToUse));
+
+      if (currentMode === "focus") {
+        console.log('[FlowState] Broadcasting LOCKDOWN_START');
+        broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
+          blockedDomains: [
+            "instagram.com",
+            "reddit.com",
+            "tiktok.com",
+            "twitter.com",
+            "facebook.com",
+            "youtube.com/shorts",
+          ],
+        });
+      }
     }
   };
   // Listen for external start trigger (e.g. from AI Discipline Coach or Streak Rebuild Modal)
@@ -897,6 +936,11 @@ export function PomodoroTimer({
   const applyModeChange = (newMode: TimerMode) => {
     setMode(newMode);
     const duration = modeDurations[newMode];
+
+    if (newMode !== "focus") {
+      console.log('[FlowState] Broadcasting LOCKDOWN_END');
+      broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_END");
+    }
 
     localStorage.setItem(STORAGE_KEY_MODE, newMode);
     localStorage.setItem(STORAGE_KEY_RUNNING, "false");
@@ -926,6 +970,9 @@ export function PomodoroTimer({
   // Fully resets the current mode's timer back to default duration, clears target end time, and pauses
   const handleReset = () => {
     const duration = modeDurations[mode];
+
+    console.log('[FlowState] Broadcasting LOCKDOWN_END');
+    broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_END");
 
     localStorage.setItem(STORAGE_KEY_RUNNING, "false");
     localStorage.removeItem(STORAGE_KEY_TARGET_END_TIME);
@@ -985,17 +1032,35 @@ export function PomodoroTimer({
     setTimeLeft(timeToUse);
     setTimerActive(true);
     setTimerTime(formatTime(timeToUse));
+
+    if (mode === "focus") {
+      console.log('[FlowState] Broadcasting LOCKDOWN_START');
+      broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
+        blockedDomains: [
+          "instagram.com",
+          "reddit.com",
+          "tiktok.com",
+          "twitter.com",
+          "facebook.com",
+          "youtube.com/shorts",
+        ],
+      });
+    }
   };
 
   // Modal Action 2: 'I need a 5-min break' -> Pause timer, switch to Break mode
   const handlePanicBreak = () => {
     setShowPanicModal(false);
+    console.log('[FlowState] Broadcasting LOCKDOWN_END');
+    broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_END");
     applyModeChange("shortBreak");
   };
 
   // Modal Action 3: 'Yes, I quit' -> End session, log a 'Panic Quit' event in the Supabase database
   const handlePanicQuit = async () => {
     setShowPanicModal(false);
+    console.log('[FlowState] Broadcasting LOCKDOWN_END');
+    broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_END");
     handleReset();
 
     if (isFullscreen && typeof document !== "undefined" && document.fullscreenElement) {
