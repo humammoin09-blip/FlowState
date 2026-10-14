@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckSquare,
@@ -28,6 +28,7 @@ export interface Task {
 export interface TaskListProps {
   tasks?: Task[];
   setTasks?: React.Dispatch<React.SetStateAction<Task[]>>;
+  isFocusActive?: boolean;
 }
 
 export default function TaskList(props?: TaskListProps) {
@@ -39,97 +40,10 @@ export default function TaskList(props?: TaskListProps) {
   const [newTaskPriority, setNewTaskPriority] = useState("Medium");
   const [newTaskDuration, setNewTaskDuration] = useState("5");
   const [loading, setLoading] = useState(true);
-  const [showAlert, setShowAlert] = useState(false);
+  const showAlert = tasks.some((t) => !t.completed && t.priority === "High");
   const notifiedTaskTimesRef = React.useRef<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTasks();
-
-    const channel = supabase
-      .channel("tasks_realtime_changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tasks" },
-        () => {
-          fetchTasks();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  // Countdown timer interval with localStorage sync & target end timestamp persistence
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTasks((prevTasks) =>
-        prevTasks.map((task) => {
-          if (task.completed) return task;
-
-          let currentRemaining = task.remainingSeconds;
-          if (currentRemaining === undefined) {
-            const savedTime = localStorage.getItem(`task_timer_${task.id}`);
-            const savedEnd = localStorage.getItem(`task_timer_end_${task.id}`);
-            const defaultMins = parseInt(task.duration || "5", 10) || 5;
-
-            if (savedEnd) {
-              currentRemaining = Math.max(0, Math.ceil((Number(savedEnd) - Date.now()) / 1000));
-            } else if (savedTime !== null) {
-              currentRemaining = parseInt(savedTime, 10);
-            } else {
-              currentRemaining = defaultMins * 60;
-            }
-          }
-
-          if (currentRemaining <= 0) return { ...task, remainingSeconds: 0 };
-
-          const newTime = currentRemaining - 1;
-          const targetEndTime = Date.now() + newTime * 1000;
-
-          localStorage.setItem(`task_timer_${task.id}`, newTime.toString());
-          localStorage.setItem(`task_timer_end_${task.id}`, targetEndTime.toString());
-
-          // Trigger push notification at 120s (2m) and 60s (1m) remaining
-          if (newTime === 120 || newTime === 60) {
-            const notifyKey = `${task.id}_${newTime}`;
-            if (!notifiedTaskTimesRef.current.has(notifyKey)) {
-              notifiedTaskTimesRef.current.add(notifyKey);
-              if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-                new Notification("FlowState MIT Alert ⚡", {
-                  body: `Task "${task.title}" is ending soon! Only ${Math.ceil(newTime / 60)} minute${newTime > 60 ? "s" : ""} left.`,
-                  icon: "/favicon.ico",
-                });
-              }
-            }
-          }
-
-          if (newTime <= 0) {
-            localStorage.removeItem(`task_timer_${task.id}`);
-            localStorage.removeItem(`task_timer_end_${task.id}`);
-          }
-
-          return { ...task, remainingSeconds: newTime };
-        })
-      );
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const pendingTasks = tasks.filter((t) => !t.completed && t.priority === "High");
-    setShowAlert(pendingTasks.length > 0);
-  }, [tasks]);
-
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -145,17 +59,16 @@ export default function TaskList(props?: TaskListProps) {
 
         const formattedTasks = data.map((t) => {
           const savedTime = localStorage.getItem(`task_timer_${t.id}`);
-          const savedEnd = localStorage.getItem(`task_timer_end_${t.id}`);
           const defaultMins = parseInt(t.duration, 10) || 5;
 
           let remaining: number;
-          if (savedEnd) {
-            remaining = Math.max(0, Math.ceil((Number(savedEnd) - Date.now()) / 1000));
-          } else if (savedTime !== null) {
+          if (savedTime !== null) {
             remaining = parseInt(savedTime, 10);
           } else {
             remaining = defaultMins * 60;
           }
+
+          localStorage.removeItem(`task_timer_end_${t.id}`);
 
           return {
             ...t,
@@ -180,13 +93,177 @@ export default function TaskList(props?: TaskListProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setTasks]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTasks();
+
+    const channel = supabase
+      .channel("tasks_realtime_changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "tasks" },
+        () => {
+          fetchTasks();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchTasks]);
+
+  const [isFocusRunning, setIsFocusRunning] = useState<boolean>(false);
+  const lastTickTimeRef = React.useRef<number | null>(null);
+
+  const checkFocusRunning = useCallback(() => {
+    if (typeof window === "undefined") return false;
+    const running = localStorage.getItem("flowstate_pomodoro_running") === "true";
+    const mode = localStorage.getItem("flowstate_pomodoro_mode") || "focus";
+    const isFocusActive = props?.isFocusActive !== false;
+    return running && mode === "focus" && isFocusActive;
+  }, [props?.isFocusActive]);
+
+  // Reactively track focus running state from props, localStorage, and cross-tab storage events
+  useEffect(() => {
+    const syncFocusState = () => {
+      setIsFocusRunning(checkFocusRunning());
+    };
+
+    syncFocusState();
+    window.addEventListener("storage", syncFocusState);
+    window.addEventListener("focus", syncFocusState);
+    window.addEventListener("visibilitychange", syncFocusState);
+
+    return () => {
+      window.removeEventListener("storage", syncFocusState);
+      window.removeEventListener("focus", syncFocusState);
+      window.removeEventListener("visibilitychange", syncFocusState);
+    };
+  }, [checkFocusRunning]);
+
+  // Countdown timer interval - only decrements while active focus session is running
+  useEffect(() => {
+    if (!isFocusRunning) {
+      lastTickTimeRef.current = null;
+      return;
+    }
+
+    if (!lastTickTimeRef.current) {
+      lastTickTimeRef.current = Date.now();
+    }
+
+    const tick = () => {
+      if (!checkFocusRunning()) {
+        lastTickTimeRef.current = null;
+        return;
+      }
+
+      const now = Date.now();
+      if (!lastTickTimeRef.current) {
+        lastTickTimeRef.current = now;
+        return;
+      }
+
+      const deltaMs = now - lastTickTimeRef.current;
+      const deltaSecs = Math.floor(deltaMs / 1000);
+      if (deltaSecs < 1) return;
+
+      lastTickTimeRef.current += deltaSecs * 1000;
+
+      setTasks((prevTasks) =>
+        prevTasks.map((task) => {
+          if (task.completed) return task;
+
+          let currentRemaining = task.remainingSeconds;
+          if (currentRemaining === undefined) {
+            const savedTime = localStorage.getItem(`task_timer_${task.id}`);
+            const defaultMins = parseInt(task.duration || "5", 10) || 5;
+
+            if (savedTime !== null) {
+              currentRemaining = parseInt(savedTime, 10);
+            } else {
+              currentRemaining = defaultMins * 60;
+            }
+          }
+
+          if (currentRemaining <= 0) return { ...task, remainingSeconds: 0 };
+
+          const currentTime = Math.max(0, currentRemaining - deltaSecs);
+          console.log('MIT tick:', currentTime, Date.now());
+
+          localStorage.setItem(`task_timer_${task.id}`, currentTime.toString());
+          localStorage.removeItem(`task_timer_end_${task.id}`);
+
+          // Trigger push notification at 120s (2m) and 60s (1m) remaining
+          if (currentTime === 120 || currentTime === 60) {
+            const notifyKey = `${task.id}_${currentTime}`;
+            if (!notifiedTaskTimesRef.current.has(notifyKey)) {
+              notifiedTaskTimesRef.current.add(notifyKey);
+              if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+                new Notification("FlowState MIT Alert ⚡", {
+                  body: `Task "${task.title}" is ending soon! Only ${Math.ceil(currentTime / 60)} minute${currentTime > 60 ? "s" : ""} left.`,
+                  icon: "/favicon.ico",
+                });
+              }
+            }
+          }
+
+          if (currentTime <= 0) {
+            localStorage.removeItem(`task_timer_${task.id}`);
+            localStorage.removeItem(`task_timer_end_${task.id}`);
+            const notifyKey = `${task.id}_0`;
+            if (!notifiedTaskTimesRef.current.has(notifyKey)) {
+              notifiedTaskTimesRef.current.add(notifyKey);
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(
+                  new CustomEvent("flowstate_new_notification", {
+                    detail: {
+                      title: `MIT Task "${task.title}" Timer Hit 0:00! ⚡`,
+                      type: "task",
+                    },
+                  })
+                );
+                if ("Notification" in window && Notification.permission === "granted") {
+                  new Notification("FlowState MIT Alert ⚡", {
+                    body: `Task "${task.title}" has reached 0:00!`,
+                    icon: "/favicon.ico",
+                  });
+                }
+              }
+            }
+          }
+
+          return { ...task, remainingSeconds: currentTime };
+        })
+      );
+    };
+
+    const timer = setInterval(tick, 1000);
+    window.addEventListener("focus", tick);
+    window.addEventListener("visibilitychange", tick);
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", tick);
+      window.removeEventListener("visibilitychange", tick);
+    };
+  }, [isFocusRunning, checkFocusRunning, setTasks]);
+
+
 
   const addTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
 
-    const durationMins = parseInt(newTaskDuration) || 5;
+    const durationMins = parseInt(newTaskDuration, 10) || 5;
     const initialSeconds = durationMins * 60;
     const fallbackId = `local_task_${Date.now()}`;
 
@@ -206,9 +283,8 @@ export default function TaskList(props?: TaskListProps) {
       if (error) throw error;
       if (data) {
         const newTaskId = data[0].id;
-        const targetEndTime = Date.now() + initialSeconds * 1000;
         localStorage.setItem(`task_timer_${newTaskId}`, initialSeconds.toString());
-        localStorage.setItem(`task_timer_end_${newTaskId}`, targetEndTime.toString());
+        localStorage.removeItem(`task_timer_end_${newTaskId}`);
 
         const newTask = {
           ...data[0],
@@ -222,9 +298,8 @@ export default function TaskList(props?: TaskListProps) {
       }
     } catch (error) {
       console.warn("Supabase insert failed, persisting task to local storage:", error);
-      const targetEndTime = Date.now() + initialSeconds * 1000;
       localStorage.setItem(`task_timer_${fallbackId}`, initialSeconds.toString());
-      localStorage.setItem(`task_timer_end_${fallbackId}`, targetEndTime.toString());
+      localStorage.removeItem(`task_timer_end_${fallbackId}`);
 
       const fallbackTask: Task = {
         id: fallbackId,

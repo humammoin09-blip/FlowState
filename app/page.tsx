@@ -189,17 +189,16 @@ export default function FlowStateDashboard() {
 
         const formattedTasks = data.map((t) => {
           const savedTime = localStorage.getItem(`task_timer_${t.id}`);
-          const savedEnd = localStorage.getItem(`task_timer_end_${t.id}`);
           const defaultMins = parseInt(t.duration, 10) || 5;
 
           let remaining: number;
-          if (savedEnd) {
-            remaining = Math.max(0, Math.ceil((Number(savedEnd) - Date.now()) / 1000));
-          } else if (savedTime !== null) {
+          if (savedTime !== null) {
             remaining = parseInt(savedTime, 10);
           } else {
             remaining = defaultMins * 60;
           }
+
+          localStorage.removeItem(`task_timer_end_${t.id}`);
 
           return {
             ...t,
@@ -412,7 +411,7 @@ export default function FlowStateDashboard() {
                   </div>
 
                   <div className="lg:col-span-7">
-                    <TaskList tasks={tasks} setTasks={setTasks} />
+                    <TaskList tasks={tasks} setTasks={setTasks} isFocusActive={timerActive} />
                   </div>
                 </motion.section>
 
@@ -462,7 +461,7 @@ export default function FlowStateDashboard() {
                 className="max-w-4xl mx-auto py-4"
               >
                 <div className="h-[620px]">
-                  <TaskList tasks={tasks} setTasks={setTasks} />
+                  <TaskList tasks={tasks} setTasks={setTasks} isFocusActive={timerActive} />
                 </div>
               </motion.div>
             )}
