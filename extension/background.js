@@ -1,44 +1,134 @@
 // FlowState Blocker - Background Service Worker (Manifest V3)
-// Manages dynamic declarativeNetRequest rules during FlowState lockdown sessions.
+// Manages dynamic declarativeNetRequest rules during FlowState lockdown sessions using an ALLOWLIST approach.
 
 const BASE_RULE_ID = 1000;
 const STORAGE_KEY_RULE_IDS = "flowstate_active_rule_ids";
 const STORAGE_KEY_LOCKDOWN = "flowstate_lockdown_active";
 const STORAGE_KEY_URL = "flowstate_app_url";
 
+// Safety allowlist that is ALWAYS allowed (cannot be removed by user)
+// Ensures FlowState itself, Supabase, Google search, and essential services never get blocked.
+const SAFETY_ALLOWLIST = [
+  "localhost",
+  "127.0.0.1",
+  "chrome.google.com",
+  "googleapis.com",
+  "supabase.co",
+  "vercel.app",
+  "google.com", // for search
+];
+
 console.log("[FlowState Blocker] Service worker loaded and ready.");
 
 /**
- * Checks if a tab's URL matches a blocked domain or path pattern.
+ * Normalizes a domain string: removes protocol, www, paths, ports, and queries.
  */
-function isTabUrlBlocked(tabUrl, blockedPattern) {
-  if (!tabUrl || !blockedPattern) return false;
+function cleanDomain(item) {
+  if (!item) return "";
+  let d = String(item).trim().toLowerCase();
+  d = d.replace(/^https?:\/\//i, "");
+  d = d.split("/")[0].split("?")[0].split("#")[0].split(":")[0];
+  d = d.replace(/^www\./i, "");
+  return d;
+}
+
+/**
+ * Converts a blocked path pattern into a DeclarativeNetRequest urlFilter.
+ * Higher priority rules (priority: 2) will block these paths even if the parent domain is allowlisted.
+ */
+function getPathUrlFilter(rawPath) {
+  if (!rawPath) return null;
+  let p = String(rawPath).trim().toLowerCase();
+  if (!p) return null;
+
+  p = p.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
+
+  // Special handling for YouTube Shorts
+  if (
+    p === "/shorts" ||
+    p === "/shorts/*" ||
+    p.includes("youtube.com/shorts")
+  ) {
+    return "||youtube.com/shorts";
+  }
+
+  if (p.startsWith("/")) {
+    const clean = p.replace(/\/\*$/, "");
+    return `*://*${clean}*`;
+  }
+
+  if (p.includes("/")) {
+    const clean = p.replace(/\/\*$/, "");
+    return `||${clean}`;
+  }
+
+  return `||${p}`;
+}
+
+/**
+ * Checks if a tab's URL is allowed during lockdown.
+ * Returns true if allowed, false if it should be blocked.
+ */
+function isTabUrlAllowed(tabUrl, excludedDomains, blockedPaths) {
+  if (!tabUrl) return true;
+  if (
+    tabUrl.startsWith("chrome://") ||
+    tabUrl.startsWith("chrome-extension://") ||
+    tabUrl.startsWith("edge://") ||
+    tabUrl.startsWith("about:") ||
+    tabUrl.startsWith("devtools://")
+  ) {
+    return true;
+  }
+
   try {
     const urlObj = new URL(tabUrl);
-    const host = urlObj.hostname.replace(/^www\./, "").toLowerCase();
+    const host = urlObj.hostname.replace(/^www\./i, "").toLowerCase();
     const pathname = urlObj.pathname.toLowerCase();
 
-    if (blockedPattern.includes("youtube.com/shorts") || blockedPattern === "/shorts") {
-      return host.includes("youtube.com") && pathname.startsWith("/shorts");
+    // 1. First check if any blocked path matches (priority 2 override)
+    if (Array.isArray(blockedPaths)) {
+      for (const bp of blockedPaths) {
+        if (!bp) continue;
+        const pattern = bp.trim().toLowerCase();
+        if (
+          pattern.includes("youtube.com/shorts") ||
+          pattern === "/shorts" ||
+          pattern === "/shorts/*"
+        ) {
+          if (host.includes("youtube.com") && pathname.startsWith("/shorts")) {
+            return false; // Blocked path!
+          }
+        } else if (pattern.includes("/")) {
+          let pat = pattern.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
+          const slashIdx = pat.indexOf("/");
+          const patDomain = pat.slice(0, slashIdx);
+          const patPath = pat.slice(slashIdx).replace(/\/\*$/, "");
+          if ((!patDomain || host === patDomain || host.endsWith("." + patDomain)) && pathname.startsWith(patPath)) {
+            return false;
+          }
+        }
+      }
     }
 
-    let targetHost = blockedPattern
-      .replace(/^https?:\/\//i, "")
-      .replace(/^www\./i, "")
-      .split("/")[0]
-      .toLowerCase();
+    // 2. Check if host is in allowlist (including SAFETY_ALLOWLIST)
+    const isAllowed = excludedDomains.some((allowed) => {
+      const clean = cleanDomain(allowed);
+      if (!clean) return false;
+      return host === clean || host.endsWith("." + clean);
+    });
 
-    return host === targetHost || host.endsWith("." + targetHost);
+    return isAllowed;
   } catch {
-    return false;
+    return true;
   }
 }
 
 /**
- * Redirects any already-open tabs that match blocked sites to blocked.html immediately.
+ * Redirects any already-open tabs that are not on the allowlist (or match blocked paths) to blocked.html immediately.
  */
-function closeOrRedirectActiveTabs(blockedDomains) {
-  if (!chrome.tabs || !blockedDomains || blockedDomains.length === 0) return;
+function closeOrRedirectActiveTabs(excludedDomains, blockedPaths) {
+  if (!chrome.tabs) return;
 
   chrome.tabs.query({}, (tabs) => {
     if (chrome.runtime.lastError) {
@@ -52,9 +142,9 @@ function closeOrRedirectActiveTabs(blockedDomains) {
       if (!tab.url || !tab.id) continue;
       if (tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://")) continue;
 
-      const shouldBlock = blockedDomains.some((d) => isTabUrlBlocked(tab.url, d));
-      if (shouldBlock) {
-        console.log(`[FlowState Blocker] Redirecting active distracting tab (${tab.url}) to blocked.html`);
+      const allowed = isTabUrlAllowed(tab.url, excludedDomains, blockedPaths);
+      if (!allowed) {
+        console.log(`[FlowState Blocker] Redirecting active non-allowlisted tab (${tab.url}) to blocked.html`);
         chrome.tabs.update(tab.id, { url: blockedPageUrl }, () => {
           if (chrome.runtime.lastError) {
             console.debug("[FlowState Blocker] tab.update notice:", chrome.runtime.lastError.message);
@@ -66,15 +156,41 @@ function closeOrRedirectActiveTabs(blockedDomains) {
 }
 
 /**
- * Activates focus lockdown: removes old rules, generates new dynamic rules, and applies them.
+ * Activates focus lockdown:
+ * 1. Creates ONE broad blocking rule for ALL URLs (urlFilter: "*", priority: 1)
+ *    with excludedRequestDomains set to the user allowlist + SAFETY_ALLOWLIST.
+ * 2. Creates higher-priority rules (priority: 2) for blockedPaths (e.g. /shorts).
+ * 3. Applies dynamic rules via chrome.declarativeNetRequest.
  */
-function startLockdown(blockedDomains, flowstateUrl, sendResponse) {
-  console.log("[FlowState Blocker] Starting lockdown for domains:", blockedDomains);
+function startLockdown(allowlistDomains, blockedPaths, flowstateUrl, sendResponse) {
+  console.log("[FlowState Blocker] Starting lockdown with allowlistDomains:", allowlistDomains, "blockedPaths:", blockedPaths);
 
-  // Save current FlowState tab URL for the redirect button
+  const userAllowed = Array.isArray(allowlistDomains) ? allowlistDomains : [];
+
+  // Save current FlowState tab URL and current allowlist for the blocked landing page
+  const storageUpdate = { current_allowlist: userAllowed };
   if (flowstateUrl) {
-    chrome.storage.local.set({ [STORAGE_KEY_URL]: flowstateUrl });
+    storageUpdate[STORAGE_KEY_URL] = flowstateUrl;
   }
+  chrome.storage.local.set(storageUpdate);
+  const pathsToProcess = Array.isArray(blockedPaths) ? blockedPaths : [];
+
+  // Extract domain from flowstateUrl if present so the app itself is never blocked
+  let appDomain = "";
+  if (flowstateUrl) {
+    appDomain = cleanDomain(flowstateUrl);
+  }
+
+  // Combined excludedRequestDomains: user allowlist + SAFETY_ALLOWLIST (+ app domain)
+  const allExcludedDomains = Array.from(
+    new Set(
+      [...userAllowed, ...SAFETY_ALLOWLIST, appDomain]
+        .map(cleanDomain)
+        .filter((d) => Boolean(d) && !d.includes("/"))
+    )
+  );
+
+  console.log("[FlowState Blocker] Combined excluded request domains for broad rule:", allExcludedDomains);
 
   // First fetch any existing dynamic rules to safely clean them up
   chrome.declarativeNetRequest.getDynamicRules((existingRules) => {
@@ -84,47 +200,11 @@ function startLockdown(blockedDomains, flowstateUrl, sendResponse) {
 
     const existingRuleIds = (existingRules || []).map((r) => r.id);
 
-    // Build new dynamic rules starting from BASE_RULE_ID (1000)
-    let nextId = BASE_RULE_ID;
-    const newRules = [];
-    const newRuleIds = [];
-
-    const domainsToProcess = Array.isArray(blockedDomains) && blockedDomains.length > 0
-      ? blockedDomains
-      : [
-          "instagram.com",
-          "reddit.com",
-          "tiktok.com",
-          "twitter.com",
-          "facebook.com",
-          "youtube.com/shorts",
-        ];
-
-    for (const item of domainsToProcess) {
-      if (!item) continue;
-      const trimmed = String(item).trim();
-      if (!trimmed) continue;
-
-      let urlFilter;
-      let priority = 1;
-
-      // Special handling: YouTube Shorts blocked even if youtube.com is allowed
-      if (
-        trimmed.includes("youtube.com/shorts") ||
-        trimmed === "/shorts" ||
-        trimmed === "/shorts/*"
-      ) {
-        urlFilter = "||youtube.com/shorts";
-        priority = 2; // Higher priority ensures Shorts is blocked regardless of parent rules
-      } else {
-        let domain = trimmed.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
-        domain = domain.split("/")[0].split("?")[0].split("#")[0];
-        urlFilter = `||${domain}`;
-      }
-
-      newRules.push({
-        id: nextId,
-        priority: priority,
+    // Rule 1: Broad blocking rule for ALL URLs (priority: 1)
+    const newRules = [
+      {
+        id: BASE_RULE_ID, // 1000
+        priority: 1,
         action: {
           type: "redirect",
           redirect: {
@@ -132,14 +212,44 @@ function startLockdown(blockedDomains, flowstateUrl, sendResponse) {
           },
         },
         condition: {
-          urlFilter: urlFilter,
-          resourceTypes: ["main_frame", "sub_frame"],
+          urlFilter: "*",
+          resourceTypes: ["main_frame"],
+          excludedRequestDomains: allExcludedDomains,
+        },
+      },
+    ];
+    const newRuleIds = [BASE_RULE_ID];
+    let nextId = BASE_RULE_ID + 1;
+
+    // Rules 2+: Higher-priority path blocking rules (priority: 2) overriding allowlist
+    const pathFilters = new Set();
+    for (const item of pathsToProcess) {
+      const filter = getPathUrlFilter(item);
+      if (filter) {
+        pathFilters.add(filter);
+      }
+    }
+
+    for (const filter of pathFilters) {
+      newRules.push({
+        id: nextId,
+        priority: 2, // Higher priority ensures blocked paths override allowlist
+        action: {
+          type: "redirect",
+          redirect: {
+            extensionPath: "/blocked.html",
+          },
+        },
+        condition: {
+          urlFilter: filter,
+          resourceTypes: ["main_frame"],
         },
       });
-
       newRuleIds.push(nextId);
       nextId++;
     }
+
+    console.log(`[FlowState Blocker] Installing ${newRules.length} dynamic rules:`, newRules);
 
     chrome.declarativeNetRequest.updateDynamicRules(
       {
@@ -160,8 +270,8 @@ function startLockdown(blockedDomains, flowstateUrl, sendResponse) {
           [STORAGE_KEY_LOCKDOWN]: true,
         });
 
-        // Intercept any currently active tabs that were already loaded
-        closeOrRedirectActiveTabs(domainsToProcess);
+        // Intercept any currently active tabs that are not allowlisted or match blocked paths
+        closeOrRedirectActiveTabs(allExcludedDomains, pathsToProcess);
 
         if (sendResponse) sendResponse({ success: true, count: newRules.length, ruleIds: newRuleIds });
       }
@@ -220,7 +330,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log("[FlowState Blocker] Received message in background:", message.type, message);
 
   if (message.type === "FLOWSTATE_LOCKDOWN_START") {
-    startLockdown(message.blockedDomains, message.flowstateUrl, sendResponse);
+    const allowlist = message.allowlistDomains || [];
+    const paths = message.blockedPaths || [];
+    chrome.storage.local.set({ current_allowlist: allowlist });
+    startLockdown(allowlist, paths, message.flowstateUrl, sendResponse);
     return true; // Keep message channel open for async response
   }
 

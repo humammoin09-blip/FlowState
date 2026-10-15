@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { PanicButton } from "@/components/PanicButton";
 import { PanicInterventionModal } from "@/components/PanicInterventionModal";
+import { FocusBlueprintModal, FocusBlueprintRecord } from "@/components/FocusBlueprintModal";
 
 export type TimerMode = "focus" | "shortBreak" | "longBreak";
 
@@ -56,11 +57,6 @@ export interface SmartAlertState {
   isExternalApp?: boolean;
 }
 
-export interface AwayToastState {
-  isOpen: boolean;
-  awaySeconds: number;
-}
-
 interface PomodoroTimerProps {
   timerActive: boolean;
   setTimerActive: (active: boolean) => void;
@@ -88,14 +84,37 @@ export const DEFAULT_BLOCKED_PATHS: string[] = [
   "youtube.com/shorts",
   "youtube.com/shorts/*",
 ];
-export const DEFAULT_BLOCKED_DOMAINS: string[] = [
-  "instagram.com",
-  "reddit.com",
-  "tiktok.com",
-  "twitter.com",
-  "facebook.com",
-  "youtube.com/shorts",
-];
+
+/**
+ * Reads the latest allowlist domains and blocked paths from localStorage with default fallbacks.
+ */
+export function getSavedAllowlistSettings(): { allowlistDomains: string[]; blockedPaths: string[] } {
+  let allowlistDomains = DEFAULT_ALLOWED_DOMAINS;
+  let blockedPaths = DEFAULT_BLOCKED_PATHS;
+
+  if (typeof window !== "undefined") {
+    try {
+      const savedDomains = localStorage.getItem(STORAGE_KEY_ALLOWED_DOMAINS);
+      if (savedDomains) {
+        const parsed = JSON.parse(savedDomains);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          allowlistDomains = parsed;
+        }
+      }
+      const savedPaths = localStorage.getItem(STORAGE_KEY_BLOCKED_PATHS);
+      if (savedPaths) {
+        const parsedPaths = JSON.parse(savedPaths);
+        if (Array.isArray(parsedPaths) && parsedPaths.length > 0) {
+          blockedPaths = parsedPaths;
+        }
+      }
+    } catch {
+      // fallback to defaults
+    }
+  }
+
+  return { allowlistDomains, blockedPaths };
+}
 
 /**
  * Normalizes a hostname or domain string:
@@ -316,16 +335,8 @@ export function PomodoroTimer({
     history: [],
   });
 
-  // Configurable Away Grace Period state (default 10s)
-  const [gracePeriodSecs, setGracePeriodSecs] = useState<number>(DEFAULT_GRACE_PERIOD_SECS);
-  const gracePeriodRef = useRef<number>(DEFAULT_GRACE_PERIOD_SECS);
-
-  // Non-blocking Away Toast state
-  const [awayToastState, setAwayToastState] = useState<AwayToastState>({
-    isOpen: false,
-    awaySeconds: 0,
-  });
-  const awayToastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Minimal tab switched indicator state (no toasts or alerts)
+  const [isTabActive, setIsTabActive] = useState<boolean>(true);
 
   // Smart Alert state (retained for backward compatibility)
   const [smartAlertState, setSmartAlertState] = useState<SmartAlertState>({
@@ -338,6 +349,28 @@ export function PomodoroTimer({
   // Friction-based Panic Button & AI Intervention modal state
   const [showPanicModal, setShowPanicModal] = useState<boolean>(false);
 
+  // Focus Blueprint pre-session setup modal state
+  const [showBlueprintModal, setShowBlueprintModal] = useState<boolean>(false);
+  const [prefilledBlueprint, setPrefilledBlueprint] = useState<FocusBlueprintRecord | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+  const successToastTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Listen for reuse blueprint event from RecentBlueprints or dashboard
+  useEffect(() => {
+    const handleReuseBlueprint = (e: Event) => {
+      const customEvent = e as CustomEvent<FocusBlueprintRecord>;
+      if (customEvent.detail) {
+        setPrefilledBlueprint(customEvent.detail);
+        setShowBlueprintModal(true);
+      }
+    };
+
+    window.addEventListener("flowstate_reuse_blueprint", handleReuseBlueprint);
+    return () => {
+      window.removeEventListener("flowstate_reuse_blueprint", handleReuseBlueprint);
+    };
+  }, []);
+
   const graceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const awayTimestampRef = useRef<number | null>(null);
   const timerActiveRef = useRef<boolean>(timerActive);
@@ -346,9 +379,6 @@ export function PomodoroTimer({
   const allowedDomainsRef = useRef<string[]>(allowedDomains);
   const blockedPathsRef = useRef<string[]>(blockedPaths);
 
-  useEffect(() => {
-    gracePeriodRef.current = gracePeriodSecs;
-  }, [gracePeriodSecs]);
 
   useEffect(() => {
     timerActiveRef.current = timerActive;
@@ -430,19 +460,32 @@ export function PomodoroTimer({
       // ignore
     }
 
-    // Load Grace Period Setting (defaults to 10s)
-    try {
-      const savedGrace = localStorage.getItem(STORAGE_KEY_GRACE_PERIOD);
-      if (savedGrace) {
-        const parsedGrace = parseInt(savedGrace, 10);
-        if (!isNaN(parsedGrace) && parsedGrace >= 1 && parsedGrace <= 300) {
-          setGracePeriodSecs(parsedGrace);
-          gracePeriodRef.current = parsedGrace;
+    // Sync Today's Blueprint from Supabase to check if daily blueprint exists
+    const syncTodayBlueprint = async () => {
+      const today = new Date().toISOString().split("T")[0];
+      const lastBlueprintDate = localStorage.getItem("flowstate_last_blueprint_date");
+      if (lastBlueprintDate === today) return;
+
+      try {
+        const now = new Date();
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+
+        const { data, error } = await supabase
+          .from("focus_blueprints")
+          .select("*")
+          .gte("created_at", startOfDay)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (!error && data && data.length > 0) {
+          localStorage.setItem("flowstate_last_blueprint_date", today);
+          localStorage.setItem("flowstate_today_blueprint", JSON.stringify(data[0]));
         }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
+    };
+    syncTodayBlueprint();
   }, []);
 
   const formatTime = useCallback((seconds: number) => {
@@ -464,11 +507,6 @@ export function PomodoroTimer({
     setTimeLeft(defaultDuration);
     setTimerTime(formatTime(defaultDuration));
     setShowDistractionOverlay(false);
-    setAwayToastState({ isOpen: false, awaySeconds: 0 });
-    if (awayToastTimerRef.current) {
-      clearTimeout(awayToastTimerRef.current);
-      awayToastTimerRef.current = null;
-    }
     setSmartAlertState({ isOpen: false, awaySeconds: 0, suggestedDomain: "External Application", isExternalApp: true });
     if (graceTimerRef.current) {
       clearTimeout(graceTimerRef.current);
@@ -572,8 +610,10 @@ export function PomodoroTimer({
         setTimerTime(formatTime(left));
         if (savedMode === "focus") {
           console.log('[FlowState] Broadcasting LOCKDOWN_START');
+          const { allowlistDomains: currentAllowed, blockedPaths: currentBlocked } = getSavedAllowlistSettings();
           broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
-            blockedDomains: DEFAULT_BLOCKED_DOMAINS,
+            allowlistDomains: currentAllowed,
+            blockedPaths: currentBlocked,
           });
         }
       } else {
@@ -677,181 +717,27 @@ export function PomodoroTimer({
     };
   }, [handleTimerCompletion, setTimerActive, setTimerTime]);
 
-  // Configurable grace period updater
-  const handleUpdateGracePeriod = useCallback((secs: number) => {
-    const clamped = Math.max(1, Math.min(300, secs));
-    setGracePeriodSecs(clamped);
-    gracePeriodRef.current = clamped;
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY_GRACE_PERIOD, String(clamped));
-    }
-  }, []);
 
-  // Dismiss non-blocking away toast
-  const dismissAwayToast = useCallback(() => {
-    if (awayToastTimerRef.current) {
-      clearTimeout(awayToastTimerRef.current);
-      awayToastTimerRef.current = null;
-    }
-    setAwayToastState((prev) => ({ ...prev, isOpen: false }));
-  }, []);
-
-  // Trigger non-blocking away toast with 15s auto-dismiss
-  const triggerAwayToast = useCallback((elapsedSecs: number) => {
-    if (awayToastTimerRef.current) {
-      clearTimeout(awayToastTimerRef.current);
-    }
-
-    setAwayToastState({
-      isOpen: true,
-      awaySeconds: elapsedSecs,
-    });
-
-    broadcastExtensionMessage("AWAY_TOAST_TRIGGERED", {
-      awaySeconds: elapsedSecs,
-      gracePeriod: gracePeriodRef.current,
-    });
-    broadcastExtensionMessage("SMART_ALERT_TRIGGERED", {
-      awaySeconds: elapsedSecs,
-      gracePeriod: gracePeriodRef.current,
-    });
-
-    // Auto-dismiss after 15 seconds
-    awayToastTimerRef.current = setTimeout(() => {
-      setAwayToastState((prev) => ({ ...prev, isOpen: false }));
-      awayToastTimerRef.current = null;
-    }, 15000);
-  }, []);
-
-  // Clean up auto-dismiss timer on unmount
-  useEffect(() => {
-    return () => {
-      if (awayToastTimerRef.current) {
-        clearTimeout(awayToastTimerRef.current);
-      }
-    };
-  }, []);
-
-  // Toast Action: Yes, Working
-  const handleToastYesWorking = useCallback(() => {
-    dismissAwayToast();
-
-    setWarningState((prev) => {
-      const updated: WarningState = {
-        ...prev,
-        history: [
-          {
-            id: Math.random().toString(36).substring(2, 9),
-            timestamp: Date.now(),
-            awaySeconds: awayToastState.awaySeconds,
-            status: "working_approved",
-            domain: "Productive Task",
-          },
-          ...prev.history.slice(0, 49),
-        ],
-      };
-      if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEY_WARNING_STATE, JSON.stringify(updated));
-      }
-      return updated;
-    });
-  }, [dismissAwayToast, awayToastState.awaySeconds]);
-
-  // Toast Action: No, Distracted
-  const handleToastNoDistracted = useCallback(() => {
-    dismissAwayToast();
-    setDistractionCount((prev) => prev + 1);
-
-    setWarningState((prev) => {
-      const updated: WarningState = {
-        count: prev.count + 1,
-        lastTriggeredAt: Date.now(),
-        history: [
-          {
-            id: Math.random().toString(36).substring(2, 9),
-            timestamp: Date.now(),
-            awaySeconds: awayToastState.awaySeconds,
-            status: "distracted_flagged",
-            domain: "Distraction",
-          },
-          ...prev.history.slice(0, 49),
-        ],
-      };
-      if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEY_WARNING_STATE, JSON.stringify(updated));
-      }
-      return updated;
-    });
-  }, [dismissAwayToast, awayToastState.awaySeconds]);
-
-  // Toast Action: Dismiss
-  const handleToastDismiss = useCallback(() => {
-    dismissAwayToast();
-  }, [dismissAwayToast]);
-
-  // Pure Time-Based Tab Away Monitor
+  // Minimal Tab State Monitor (for visual indicator only - no toasts or alerts)
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const handleVisibility = () => {
-      const isRunning =
-        timerActiveRef.current ||
-        localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
-      const curMode =
-        (localStorage.getItem(STORAGE_KEY_MODE) as TimerMode) ||
-        modeRef.current ||
-        "focus";
-
-      if (document.visibilityState === "hidden") {
-        if (isRunning && curMode === "focus") {
-          // Tab switched away or minimized during active focus session:
-          // Record away timestamp
-          const leaveTime = Date.now();
-          awayTimestampRef.current = leaveTime;
-          sessionStorage.setItem("flowstate_away_timestamp", String(leaveTime));
-        }
-      } else if (document.visibilityState === "visible") {
-        // Tab restored / user returned to FlowState tab
-        const storedLeaveTime = sessionStorage.getItem("flowstate_away_timestamp");
-        const leaveTime =
-          awayTimestampRef.current || (storedLeaveTime ? Number(storedLeaveTime) : null);
-
-        // Always consume and clear away timestamp immediately
-        sessionStorage.removeItem("flowstate_away_timestamp");
-        sessionStorage.removeItem("flowstate_smart_alert_due");
-        awayTimestampRef.current = null;
-
-        if (leaveTime && isRunning && curMode === "focus") {
-          const elapsedMs = Date.now() - leaveTime;
-          const elapsedSecs = Math.max(1, Math.round(elapsedMs / 1000));
-          const threshold = gracePeriodRef.current ?? DEFAULT_GRACE_PERIOD_SECS;
-
-          // Pure time-based detection: only trigger toast if user was away > threshold (default 10s)
-          // No URL checks, no allowlist checks — web apps cannot detect external tabs/apps.
-          if (elapsedSecs > threshold) {
-            triggerAwayToast(elapsedSecs);
-          }
-        }
-      }
+      setIsTabActive(!document.hidden);
     };
 
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
 
-    window.addEventListener("visibilitychange", handleVisibility);
     document.addEventListener("visibilitychange", handleVisibility);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
 
     return () => {
-      window.removeEventListener("visibilitychange", handleVisibility);
       document.removeEventListener("visibilitychange", handleVisibility);
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
-      if (graceTimerRef.current) {
-        clearTimeout(graceTimerRef.current);
-      }
     };
-  }, [triggerAwayToast]);
+  }, []);
 
   const toggleFullscreen = () => {
     if (typeof document === "undefined") return;
@@ -887,6 +773,42 @@ export function PomodoroTimer({
     } else {
       // Start / Resume
       const currentMode = mode || (localStorage.getItem(STORAGE_KEY_MODE) as TimerMode) || "focus";
+      const isPausedMidSession =
+        timeLeft > 0 &&
+        timeLeft < modeDurations[currentMode] &&
+        localStorage.getItem(STORAGE_KEY_REMAINING) !== null;
+
+      // When starting a focus session anew:
+      // The AI Agent 'Focus Blueprint' wizard should ONLY appear once per day — the first time the user starts a Focus Timer after 12:00 AM (midnight local time).
+      if (currentMode === "focus" && !isPausedMidSession) {
+        const today = new Date().toISOString().split("T")[0];
+        const lastBlueprintDate = typeof window !== "undefined" ? localStorage.getItem("flowstate_last_blueprint_date") : null;
+
+        if (lastBlueprintDate !== today) {
+          // First focus of the day: show wizard
+          setShowBlueprintModal(true);
+          return;
+        } else {
+          // Second+ focus on the same day: skip wizard, use existing blueprint for today, start timer directly
+          console.log("[FlowState] Today's blueprint already exists. Skipping wizard and starting timer directly.");
+          try {
+            const cachedBpStr = localStorage.getItem("flowstate_today_blueprint");
+            if (cachedBpStr) {
+              const cachedBp = JSON.parse(cachedBpStr);
+              if (cachedBp && Array.isArray(cachedBp.allowlist) && cachedBp.allowlist.length > 0) {
+                const currentAllowed = allowedDomainsRef.current || allowedDomains;
+                const merged = Array.from(new Set([...currentAllowed, ...cachedBp.allowlist]));
+                setAllowedDomains(merged);
+                allowedDomainsRef.current = merged;
+                localStorage.setItem(STORAGE_KEY_ALLOWED_DOMAINS, JSON.stringify(merged));
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+
       const timeToUse = timeLeft <= 0 ? modeDurations[currentMode] : timeLeft;
       const targetEndTime = Date.now() + timeToUse * 1000;
 
@@ -901,19 +823,84 @@ export function PomodoroTimer({
 
       if (currentMode === "focus") {
         console.log('[FlowState] Broadcasting LOCKDOWN_START');
+        const { allowlistDomains: currentAllowed, blockedPaths: currentBlocked } = getSavedAllowlistSettings();
         broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
-          blockedDomains: [
-            "instagram.com",
-            "reddit.com",
-            "tiktok.com",
-            "twitter.com",
-            "facebook.com",
-            "youtube.com/shorts",
-          ],
+          allowlistDomains: currentAllowed,
+          blockedPaths: currentBlocked,
         });
       }
     }
   };
+
+  // Handle Focus Blueprint Confirmation from 3-Step Wizard
+  const handleConfirmBlueprint = useCallback(
+    (blueprint: FocusBlueprintRecord) => {
+      setShowBlueprintModal(false);
+      setPrefilledBlueprint(null);
+
+      // Record today's date so the wizard only appears once per day
+      const today = new Date().toISOString().split("T")[0];
+      if (typeof window !== "undefined") {
+        localStorage.setItem("flowstate_last_blueprint_date", today);
+        localStorage.setItem("flowstate_today_blueprint", JSON.stringify(blueprint));
+      }
+
+      // 1. Update the Study Allowlist in localStorage with the selected domains (merge with existing, don't overwrite)
+      const incomingDomains = blueprint.allowlist || [];
+      const currentAllowed = allowedDomainsRef.current || allowedDomains;
+      const mergedDomains = Array.from(new Set([...currentAllowed, ...incomingDomains]));
+
+      setAllowedDomains(mergedDomains);
+      allowedDomainsRef.current = mergedDomains;
+      if (typeof window !== "undefined") {
+        localStorage.setItem(STORAGE_KEY_ALLOWED_DOMAINS, JSON.stringify(mergedDomains));
+      }
+
+      // 2. Start the Pomodoro timer
+      const currentMode: TimerMode = "focus";
+      const timeToUse = modeDurations[currentMode];
+      const targetEndTime = Date.now() + timeToUse * 1000;
+
+      localStorage.setItem(STORAGE_KEY_TARGET_END_TIME, String(targetEndTime));
+      localStorage.setItem(STORAGE_KEY_RUNNING, "true");
+      localStorage.setItem(STORAGE_KEY_MODE, currentMode);
+      localStorage.removeItem(STORAGE_KEY_REMAINING);
+
+      setTimeLeft(timeToUse);
+      setTimerActive(true);
+      setTimerTime(formatTime(timeToUse));
+
+      // 3. Broadcast FLOWSTATE_LOCKDOWN_START with the new allowlistDomains and blockedPaths
+      console.log("[FlowState] Broadcasting LOCKDOWN_START with blueprint allowlist");
+      broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
+        allowlistDomains: mergedDomains,
+        blockedPaths: blockedPathsRef.current || blockedPaths,
+      });
+
+      // 4. Close the wizard modal with a success toast: '🎯 Blueprint locked in. Let\'s go.'
+      setSuccessToast("🎯 Blueprint locked in. Let's go.");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("flowstate_new_notification", {
+            detail: {
+              title: "🎯 Blueprint locked in. Let's go.",
+              type: "system",
+            },
+          })
+        );
+        window.dispatchEvent(new CustomEvent("flowstate_blueprint_locked", { detail: blueprint }));
+      }
+
+      if (successToastTimerRef.current) {
+        clearTimeout(successToastTimerRef.current);
+      }
+      successToastTimerRef.current = setTimeout(() => {
+        setSuccessToast(null);
+        successToastTimerRef.current = null;
+      }, 4000);
+    },
+    [allowedDomains, blockedPaths, formatTime, modeDurations, setTimerActive, setTimerTime]
+  );
   // Listen for external start trigger (e.g. from AI Discipline Coach or Streak Rebuild Modal)
   const toggleTimerRef = useRef(toggleTimer);
   useEffect(() => {
@@ -1035,15 +1022,10 @@ export function PomodoroTimer({
 
     if (mode === "focus") {
       console.log('[FlowState] Broadcasting LOCKDOWN_START');
+      const { allowlistDomains: currentAllowed, blockedPaths: currentBlocked } = getSavedAllowlistSettings();
       broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
-        blockedDomains: [
-          "instagram.com",
-          "reddit.com",
-          "tiktok.com",
-          "twitter.com",
-          "facebook.com",
-          "youtube.com/shorts",
-        ],
+        allowlistDomains: currentAllowed,
+        blockedPaths: currentBlocked,
       });
     }
   };
@@ -1216,6 +1198,12 @@ export function PomodoroTimer({
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEY_ALLOWED_DOMAINS, JSON.stringify(updated));
     }
+    if (timerActiveRef.current && modeRef.current === "focus") {
+      broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
+        allowlistDomains: updated,
+        blockedPaths: blockedPathsRef.current || blockedPaths,
+      });
+    }
   };
 
   const handleRemoveDomain = (domainToRemove: string) => {
@@ -1224,23 +1212,60 @@ export function PomodoroTimer({
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEY_ALLOWED_DOMAINS, JSON.stringify(updated));
     }
+    if (timerActiveRef.current && modeRef.current === "focus") {
+      broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
+        allowlistDomains: updated,
+        blockedPaths: blockedPathsRef.current || blockedPaths,
+      });
+    }
   };
 
-  // Blocked paths management (Bonus path matching)
+  // Blocked paths management (Strict path matching)
   const handleAddBlockedPath = (path: string) => {
     if (!path) return;
     const cleaned = path.trim().toLowerCase();
     if (!cleaned) return;
+
+    // Normalize check: strip leading protocol/www and trailing slash
+    const stripped = cleaned.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
+    const withoutTrailingSlash = stripped.replace(/\/+$/, "");
+
+    // Regex for common Top-Level Domains (.com, .io, .org, etc.)
+    const TLD_REGEX = /\.(com|org|net|edu|gov|io|ai|app|co|dev|me|so|in|uk|ca|de|fr|xyz|tech|info|site|online|tv|cc|to|[a-z]{2,})$/i;
+
+    // Check if input contains no '/' AND ends with a TLD (.com, .io, .org, etc.)
+    if (!withoutTrailingSlash.includes("/") && TLD_REGEX.test(withoutTrailingSlash)) {
+      setAllowlistFeedback(
+        "This looks like a domain. To allow this site, add it to the Allowlist above. To block it, it must be NOT in the allowlist."
+      );
+      return;
+    }
+
+    // Since we're moving to allowlist-based blocking, Blocked Paths section should ONLY accept path patterns containing '/'
+    if (!cleaned.includes("/")) {
+      setAllowlistFeedback(
+        "Blocked paths must include a '/' (e.g. /shorts/* or youtube.com/shorts)."
+      );
+      return;
+    }
+
     if (blockedPaths.includes(cleaned)) {
       setAllowlistFeedback(`Path "${cleaned}" is already in blocked paths.`);
       return;
     }
+
     const updated = [...blockedPaths, cleaned];
     setBlockedPaths(updated);
     setNewBlockedPathInput("");
     setAllowlistFeedback(`Added "${cleaned}" to blocked paths.`);
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEY_BLOCKED_PATHS, JSON.stringify(updated));
+    }
+    if (timerActiveRef.current && modeRef.current === "focus") {
+      broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
+        allowlistDomains: allowedDomainsRef.current || allowedDomains,
+        blockedPaths: updated,
+      });
     }
   };
 
@@ -1250,16 +1275,27 @@ export function PomodoroTimer({
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEY_BLOCKED_PATHS, JSON.stringify(updated));
     }
+    if (timerActiveRef.current && modeRef.current === "focus") {
+      broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
+        allowlistDomains: allowedDomainsRef.current || allowedDomains,
+        blockedPaths: updated,
+      });
+    }
   };
 
   const handleResetAllowlist = () => {
     setAllowedDomains(DEFAULT_ALLOWED_DOMAINS);
     setBlockedPaths(DEFAULT_BLOCKED_PATHS);
-    handleUpdateGracePeriod(DEFAULT_GRACE_PERIOD_SECS);
     setAllowlistFeedback("Reset settings to default values");
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEY_ALLOWED_DOMAINS, JSON.stringify(DEFAULT_ALLOWED_DOMAINS));
       localStorage.setItem(STORAGE_KEY_BLOCKED_PATHS, JSON.stringify(DEFAULT_BLOCKED_PATHS));
+    }
+    if (timerActiveRef.current && modeRef.current === "focus") {
+      broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
+        allowlistDomains: DEFAULT_ALLOWED_DOMAINS,
+        blockedPaths: DEFAULT_BLOCKED_PATHS,
+      });
     }
   };
 
@@ -1369,6 +1405,23 @@ export function PomodoroTimer({
               </div>
             )}
 
+            {/* Minimal Tab Switched Indicator */}
+            {timerActive && mode === "focus" && (
+              <div
+                className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900/60 border border-white/10 text-[10px] font-medium text-slate-300"
+                title={isTabActive ? "FlowState tab active" : "FlowState tab in background"}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    isTabActive
+                      ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]"
+                      : "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"
+                  }`}
+                />
+                <span className="hidden sm:inline">{isTabActive ? "Active" : "Away"}</span>
+              </div>
+            )}
+
             {/* Allowlist & Settings Trigger */}
             <button
               onClick={() => setShowAllowlistModal(true)}
@@ -1377,13 +1430,10 @@ export function PomodoroTimer({
                   ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300"
                   : "bg-slate-900/60 border-white/10 text-slate-300 hover:text-white hover:bg-slate-800"
               }`}
-              title="Configure Settings: Away Grace Period & Study Allowlist"
+              title="Configure Settings: Study Allowlist"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-[11px] font-semibold hidden sm:inline">Settings</span>
-              <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded-full border border-emerald-500/30">
-                {gracePeriodSecs}s
-              </span>
+              <span className="text-[11px] font-semibold hidden sm:inline">Allowlist</span>
             </button>
 
             <button
@@ -1498,19 +1548,12 @@ export function PomodoroTimer({
           )}
         </div>
 
-        {/* Pre-session Setup Bar: Study Allowlist & Grace Period Quick Status */}
+        {/* Pre-session Setup Bar: Study Allowlist Quick Status */}
         {!timerActive && mode === "focus" && (
           <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-900/60 border border-white/5 text-xs text-slate-400">
             <div className="flex items-center gap-1.5 overflow-hidden">
               <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1 shrink-0">
                 <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                Grace:
-              </span>
-              <span className="px-1.5 py-0.5 rounded-md bg-white/[0.06] border border-white/10 text-[10px] font-mono text-emerald-300 font-bold">
-                {gracePeriodSecs}s
-              </span>
-              <span className="text-slate-600">|</span>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
                 Allowlist:
               </span>
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
@@ -1529,12 +1572,24 @@ export function PomodoroTimer({
                 )}
               </div>
             </div>
-            <button
-              onClick={() => setShowAllowlistModal(true)}
-              className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 ml-2 shrink-0 transition-colors"
-            >
-              Configure →
-            </button>
+            <div className="flex items-center gap-2 ml-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowBlueprintModal(true)}
+                className="text-[10px] font-bold text-[#00ff88] hover:text-[#00ff88]/80 transition-colors flex items-center gap-0.5"
+                title="Open Focus Blueprint Wizard"
+              >
+                <Sparkles className="w-3 h-3 text-[#00ff88]" />
+                <span>Blueprint</span>
+              </button>
+              <span className="text-slate-600">|</span>
+              <button
+                onClick={() => setShowAllowlistModal(true)}
+                className="text-[10px] font-bold text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                Settings →
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -1575,80 +1630,6 @@ export function PomodoroTimer({
         )}
       </AnimatePresence>
 
-      {/* Productivity Return Non-blocking Toast */}
-      <AnimatePresence>
-        {awayToastState.isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 35, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 350, damping: 25 }}
-            className="fixed bottom-6 right-6 z-50 w-full max-w-sm rounded-2xl bg-slate-950/95 backdrop-blur-2xl border border-white/15 p-4 shadow-[0_20px_50px_rgba(0,0,0,0.65),0_0_25px_rgba(16,185,129,0.15)] text-left space-y-3 pointer-events-auto"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
-                  Focus Monitor
-                </span>
-              </div>
-              <span className="text-[10px] font-mono text-slate-400">
-                15s auto-dismiss
-              </span>
-            </div>
-
-            <div>
-              <p className="text-sm font-semibold text-white leading-snug">
-                Away for {awayToastState.awaySeconds}s. Was this productive?
-              </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Timer kept running. Confirm your focus to maintain discipline.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={handleToastYesWorking}
-                className="flex-1 py-1.5 px-2 rounded-xl text-xs font-bold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 active:scale-95 transition-all flex items-center justify-center gap-1 shadow-sm"
-              >
-                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Yes, Working</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleToastNoDistracted}
-                className="flex-1 py-1.5 px-2 rounded-xl text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 active:scale-95 transition-all flex items-center justify-center gap-1"
-              >
-                <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                <span>No, Distracted</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleToastDismiss}
-                className="py-1.5 px-2.5 rounded-xl text-xs font-medium bg-slate-900 hover:bg-white/10 text-slate-400 hover:text-slate-200 border border-white/10 active:scale-95 transition-all"
-              >
-                Dismiss
-              </button>
-            </div>
-
-            <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden">
-              <motion.div
-                initial={{ width: "100%" }}
-                animate={{ width: "0%" }}
-                transition={{ duration: 15, ease: "linear" }}
-                className="h-full bg-gradient-to-r from-emerald-500 to-teal-400"
-              />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Focus Chamber Settings Modal */}
       <AnimatePresence>
         {showAllowlistModal && (
@@ -1669,7 +1650,7 @@ export function PomodoroTimer({
                   <div className="text-left">
                     <h3 className="text-sm font-bold text-white">Focus Chamber Settings</h3>
                     <p className="text-[11px] text-slate-400">
-                      Configure Away Grace Period & Study Allowlist
+                      Configure Study Allowlist
                     </p>
                   </div>
                 </div>
@@ -1682,57 +1663,6 @@ export function PomodoroTimer({
                 >
                   <X className="w-4 h-4" />
                 </button>
-              </div>
-
-              {/* Away Grace Period Configuration */}
-              <div className="space-y-2 text-left p-3 rounded-xl bg-slate-900/80 border border-white/10">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Timer className="w-4 h-4 text-emerald-400" />
-                    <div>
-                      <h4 className="text-xs font-bold text-white">Away Grace Period</h4>
-                      <p className="text-[10px] text-slate-400">
-                        Trigger non-blocking toast when returning after being away longer than this.
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-lg">
-                    {gracePeriodSecs}s
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1.5 pt-1">
-                  {[5, 10, 15, 30, 60].map((secs) => (
-                    <button
-                      key={secs}
-                      type="button"
-                      onClick={() => handleUpdateGracePeriod(secs)}
-                      className={`flex-1 py-1 px-1.5 rounded-lg text-xs font-mono font-semibold transition-all border ${
-                        gracePeriodSecs === secs
-                          ? "bg-emerald-500/25 border-emerald-500/50 text-emerald-300 shadow-sm"
-                          : "bg-slate-950/60 border-white/5 text-slate-400 hover:text-white hover:bg-slate-800"
-                      }`}
-                    >
-                      {secs}s{secs === 10 ? " (Default)" : ""}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-3 pt-1">
-                  <span className="text-[10px] text-slate-500">Custom:</span>
-                  <input
-                    type="range"
-                    min="3"
-                    max="120"
-                    step="1"
-                    value={gracePeriodSecs}
-                    onChange={(e) => handleUpdateGracePeriod(Number(e.target.value))}
-                    className="flex-1 accent-emerald-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg appearance-none"
-                  />
-                  <span className="text-[10px] font-mono text-slate-300 w-8 text-right">
-                    {gracePeriodSecs}s
-                  </span>
-                </div>
               </div>
 
               {/* Add Domain Input */}
@@ -1765,7 +1695,16 @@ export function PomodoroTimer({
                   </button>
                 </div>
                 {allowlistFeedback && (
-                  <p className="text-[11px] text-emerald-400 font-medium">
+                  <p
+                    className={`text-[11px] font-medium ${
+                      allowlistFeedback.includes("looks like a domain") ||
+                      allowlistFeedback.includes("already") ||
+                      allowlistFeedback.includes("valid") ||
+                      allowlistFeedback.includes("must include")
+                        ? "text-amber-400"
+                        : "text-emerald-400"
+                    }`}
+                  >
                     {allowlistFeedback}
                   </p>
                 )}
@@ -1805,7 +1744,7 @@ export function PomodoroTimer({
                   <span className="font-semibold text-slate-300">
                     Active Allowed Domains ({allowedDomains.length})
                   </span>
-                  <span className="text-slate-500 text-[10px]">{gracePeriodSecs}s Grace Period Configured</span>
+                  <span className="text-slate-500 text-[10px]">Active in Focus Session</span>
                 </div>
                 <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1">
                   {allowedDomains.map((domain) => {
@@ -1871,6 +1810,21 @@ export function PomodoroTimer({
                     <span>Block</span>
                   </button>
                 </div>
+
+                {allowlistFeedback && (
+                  <p
+                    className={`text-[11px] font-medium ${
+                      allowlistFeedback.includes("looks like a domain") ||
+                      allowlistFeedback.includes("already") ||
+                      allowlistFeedback.includes("valid") ||
+                      allowlistFeedback.includes("must include")
+                        ? "text-amber-400"
+                        : "text-emerald-400"
+                    }`}
+                  >
+                    {allowlistFeedback}
+                  </p>
+                )}
 
                 <div className="max-h-24 overflow-y-auto space-y-1 pr-1 pt-0.5">
                   {blockedPaths.map((path) => (
@@ -1978,6 +1932,36 @@ export function PomodoroTimer({
             : "Alex Vance"
         }
       />
+
+      {/* Focus Blueprint 3-Step Wizard Modal */}
+      <FocusBlueprintModal
+        isOpen={showBlueprintModal}
+        onClose={() => {
+          setShowBlueprintModal(false);
+          setPrefilledBlueprint(null);
+        }}
+        onConfirm={handleConfirmBlueprint}
+        sessionDuration={customFocusMins}
+        existingAllowlist={allowedDomains}
+        prefilledBlueprint={prefilledBlueprint}
+      />
+
+      {/* Blueprint Locked Success Toast */}
+      <AnimatePresence>
+        {successToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -25, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -25, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 350, damping: 25 }}
+            className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-slate-950/95 backdrop-blur-2xl border border-[#00ff88]/40 shadow-[0_10px_40px_rgba(0,0,0,0.6),0_0_25px_rgba(0,255,136,0.3)] flex items-center gap-3 text-white text-xs font-bold pointer-events-auto"
+          >
+            <div className="w-2.5 h-2.5 rounded-full bg-[#00ff88] animate-ping" />
+            <span className="text-sm">🎯</span>
+            <span>{successToast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main Timer Dial & Numerical Countdown */}
       <div className="relative py-6 flex flex-col items-center justify-center">

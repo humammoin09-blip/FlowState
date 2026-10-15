@@ -22,6 +22,7 @@ export interface Task {
   completed: boolean;
   duration?: string;
   remainingSeconds?: number;
+  remaining_seconds?: number;
   created_at?: string;
 }
 
@@ -43,6 +44,28 @@ export default function TaskList(props?: TaskListProps) {
   const showAlert = tasks.some((t) => !t.completed && t.priority === "High");
   const notifiedTaskTimesRef = React.useRef<Set<string>>(new Set());
 
+  const persistTaskCompletion = async (taskId: string) => {
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .update({ completed: true, remaining_seconds: 0 })
+        .eq("id", taskId);
+
+      if (error) {
+        if (error.code === "PGRST204" || error.message?.includes("remaining_seconds")) {
+          await supabase
+            .from("tasks")
+            .update({ completed: true })
+            .eq("id", taskId);
+        } else {
+          console.warn("Supabase completion sync warning:", error);
+        }
+      }
+    } catch (err) {
+      console.warn("Supabase completion update failed:", err);
+    }
+  };
+
   const fetchTasks = useCallback(async () => {
     try {
       setLoading(true);
@@ -57,21 +80,66 @@ export default function TaskList(props?: TaskListProps) {
           localStorage.setItem("flowstate_cached_tasks", JSON.stringify(data));
         }
 
-        const formattedTasks = data.map((t) => {
-          const savedTime = localStorage.getItem(`task_timer_${t.id}`);
-          const defaultMins = parseInt(t.duration, 10) || 5;
+        const formattedTasks: Task[] = data.map((t) => {
+          const isCompletedSaved =
+            typeof window !== "undefined" &&
+            localStorage.getItem(`task_completed_${t.id}`) === "true";
+          const savedTime =
+            typeof window !== "undefined"
+              ? localStorage.getItem(`task_timer_${t.id}`)
+              : null;
+          const isTaskCompleted = Boolean(
+            t.completed ||
+              t.remaining_seconds === 0 ||
+              isCompletedSaved ||
+              savedTime === "0"
+          );
+
+          if (isTaskCompleted) {
+            if (typeof window !== "undefined") {
+              localStorage.setItem(`task_timer_${t.id}`, "0");
+              localStorage.setItem(`task_completed_${t.id}`, "true");
+              localStorage.removeItem(`task_timer_end_${t.id}`);
+            }
+            return {
+              ...t,
+              completed: true,
+              remainingSeconds: 0,
+              remaining_seconds: 0,
+            };
+          }
+
+          const defaultMins = parseInt(t.duration || "5", 10) || 5;
 
           let remaining: number;
           if (savedTime !== null) {
             remaining = parseInt(savedTime, 10);
+          } else if (t.remaining_seconds !== undefined && t.remaining_seconds !== null) {
+            remaining = t.remaining_seconds;
           } else {
             remaining = defaultMins * 60;
           }
 
-          localStorage.removeItem(`task_timer_end_${t.id}`);
+          if (remaining <= 0) {
+            if (typeof window !== "undefined") {
+              localStorage.setItem(`task_timer_${t.id}`, "0");
+              localStorage.setItem(`task_completed_${t.id}`, "true");
+            }
+            return {
+              ...t,
+              completed: true,
+              remainingSeconds: 0,
+              remaining_seconds: 0,
+            };
+          }
+
+          if (typeof window !== "undefined") {
+            localStorage.removeItem(`task_timer_end_${t.id}`);
+          }
 
           return {
             ...t,
+            completed: false,
             remainingSeconds: isNaN(remaining) ? defaultMins * 60 : remaining,
           };
         });
@@ -84,7 +152,26 @@ export default function TaskList(props?: TaskListProps) {
         if (cached) {
           try {
             const parsed = JSON.parse(cached);
-            setTasks(parsed);
+            const normalized = parsed.map((t: Task) => {
+              const isCompletedSaved = localStorage.getItem(`task_completed_${t.id}`) === "true";
+              const savedTime = localStorage.getItem(`task_timer_${t.id}`);
+              if (t.completed || t.remaining_seconds === 0 || isCompletedSaved || savedTime === "0") {
+                return {
+                  ...t,
+                  completed: true,
+                  remainingSeconds: 0,
+                  remaining_seconds: 0,
+                };
+              }
+              const defaultMins = parseInt(t.duration || "5", 10) || 5;
+              const rem = savedTime !== null ? parseInt(savedTime, 10) : (t.remainingSeconds ?? defaultMins * 60);
+              return {
+                ...t,
+                completed: false,
+                remainingSeconds: isNaN(rem) ? defaultMins * 60 : rem,
+              };
+            });
+            setTasks(normalized);
           } catch {
             // keep existing tasks
           }
@@ -178,29 +265,66 @@ export default function TaskList(props?: TaskListProps) {
 
       lastTickTimeRef.current += deltaSecs * 1000;
 
-      setTasks((prevTasks) =>
-        prevTasks.map((task) => {
-          if (task.completed) return task;
+      const justCompletedTaskIds: string[] = [];
+
+      setTasks((prevTasks) => {
+        const nextTasks = prevTasks.map((task) => {
+          // Guard at the top: skip already completed or 0-remaining tasks
+          if (task.completed || task.remainingSeconds === 0) return task;
 
           let currentRemaining = task.remainingSeconds;
           if (currentRemaining === undefined) {
-            const savedTime = localStorage.getItem(`task_timer_${task.id}`);
+            // Check localStorage task_completed BEFORE fallback logic
+            const isCompletedSaved =
+              typeof window !== "undefined" &&
+              localStorage.getItem(`task_completed_${task.id}`) === "true";
+            if (isCompletedSaved) {
+              if (typeof window !== "undefined") {
+                localStorage.setItem(`task_timer_${task.id}`, "0");
+              }
+              return {
+                ...task,
+                completed: true,
+                remainingSeconds: 0,
+                remaining_seconds: 0,
+              };
+            }
+
+            const savedTime =
+              typeof window !== "undefined"
+                ? localStorage.getItem(`task_timer_${task.id}`)
+                : null;
             const defaultMins = parseInt(task.duration || "5", 10) || 5;
 
             if (savedTime !== null) {
               currentRemaining = parseInt(savedTime, 10);
+            } else if (task.remaining_seconds !== undefined && task.remaining_seconds !== null) {
+              currentRemaining = task.remaining_seconds;
             } else {
               currentRemaining = defaultMins * 60;
             }
           }
 
-          if (currentRemaining <= 0) return { ...task, remainingSeconds: 0 };
+          if (currentRemaining <= 0) {
+            if (typeof window !== "undefined") {
+              localStorage.setItem(`task_timer_${task.id}`, "0");
+              localStorage.setItem(`task_completed_${task.id}`, "true");
+            }
+            return {
+              ...task,
+              completed: true,
+              remainingSeconds: 0,
+              remaining_seconds: 0,
+            };
+          }
 
           const currentTime = Math.max(0, currentRemaining - deltaSecs);
           console.log('MIT tick:', currentTime, Date.now());
 
-          localStorage.setItem(`task_timer_${task.id}`, currentTime.toString());
-          localStorage.removeItem(`task_timer_end_${task.id}`);
+          if (typeof window !== "undefined") {
+            localStorage.setItem(`task_timer_${task.id}`, currentTime.toString());
+            localStorage.removeItem(`task_timer_end_${task.id}`);
+          }
 
           // Trigger push notification at 120s (2m) and 60s (1m) remaining
           if (currentTime === 120 || currentTime === 60) {
@@ -217,8 +341,16 @@ export default function TaskList(props?: TaskListProps) {
           }
 
           if (currentTime <= 0) {
-            localStorage.removeItem(`task_timer_${task.id}`);
-            localStorage.removeItem(`task_timer_end_${task.id}`);
+            // IMMEDIATE LOCAL STORAGE PERSISTENCE:
+            // Do NOT remove item — set to '0' and mark completed: true
+            if (typeof window !== "undefined") {
+              localStorage.setItem(`task_timer_${task.id}`, "0");
+              localStorage.setItem(`task_completed_${task.id}`, "true");
+              localStorage.removeItem(`task_timer_end_${task.id}`);
+            }
+
+            justCompletedTaskIds.push(task.id);
+
             const notifyKey = `${task.id}_0`;
             if (!notifiedTaskTimesRef.current.has(notifyKey)) {
               notifiedTaskTimesRef.current.add(notifyKey);
@@ -239,11 +371,32 @@ export default function TaskList(props?: TaskListProps) {
                 }
               }
             }
+
+            // Immediately mark completed in local state
+            return {
+              ...task,
+              completed: true,
+              remainingSeconds: 0,
+              remaining_seconds: 0,
+            };
           }
 
           return { ...task, remainingSeconds: currentTime };
-        })
-      );
+        });
+
+        if (typeof window !== "undefined") {
+          localStorage.setItem("flowstate_cached_tasks", JSON.stringify(nextTasks));
+        }
+
+        return nextTasks;
+      });
+
+      // Synchronously triggered async persistence to Supabase with race-condition guard
+      if (justCompletedTaskIds.length > 0) {
+        justCompletedTaskIds.forEach(async (taskId) => {
+          await persistTaskCompletion(taskId);
+        });
+      }
     };
 
     const timer = setInterval(tick, 1000);
@@ -257,8 +410,6 @@ export default function TaskList(props?: TaskListProps) {
     };
   }, [isFocusRunning, checkFocusRunning, setTasks]);
 
-
-
   const addTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
@@ -268,7 +419,8 @@ export default function TaskList(props?: TaskListProps) {
     const fallbackId = `local_task_${Date.now()}`;
 
     try {
-      const { data, error } = await supabase
+      let data, error;
+      const insertAttempt = await supabase
         .from("tasks")
         .insert([
           {
@@ -276,19 +428,42 @@ export default function TaskList(props?: TaskListProps) {
             priority: newTaskPriority,
             completed: false,
             duration: `${durationMins}m`,
+            remaining_seconds: initialSeconds,
           },
         ])
         .select();
+
+      data = insertAttempt.data;
+      error = insertAttempt.error;
+
+      if (error && (error.code === "PGRST204" || error.message?.includes("remaining_seconds"))) {
+        const retry = await supabase
+          .from("tasks")
+          .insert([
+            {
+              title: newTaskTitle,
+              priority: newTaskPriority,
+              completed: false,
+              duration: `${durationMins}m`,
+            },
+          ])
+          .select();
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) throw error;
       if (data) {
         const newTaskId = data[0].id;
         localStorage.setItem(`task_timer_${newTaskId}`, initialSeconds.toString());
+        localStorage.setItem(`task_completed_${newTaskId}`, "false");
         localStorage.removeItem(`task_timer_end_${newTaskId}`);
 
-        const newTask = {
+        const newTask: Task = {
           ...data[0],
+          completed: false,
           remainingSeconds: initialSeconds,
+          remaining_seconds: initialSeconds,
         };
         const updated = [newTask, ...tasks];
         setTasks(updated);
@@ -299,6 +474,7 @@ export default function TaskList(props?: TaskListProps) {
     } catch (error) {
       console.warn("Supabase insert failed, persisting task to local storage:", error);
       localStorage.setItem(`task_timer_${fallbackId}`, initialSeconds.toString());
+      localStorage.setItem(`task_completed_${fallbackId}`, "false");
       localStorage.removeItem(`task_timer_end_${fallbackId}`);
 
       const fallbackTask: Task = {
@@ -308,6 +484,7 @@ export default function TaskList(props?: TaskListProps) {
         completed: false,
         duration: `${durationMins}m`,
         remainingSeconds: initialSeconds,
+        remaining_seconds: initialSeconds,
         created_at: new Date().toISOString(),
       };
       const updated = [fallbackTask, ...tasks];
@@ -320,42 +497,110 @@ export default function TaskList(props?: TaskListProps) {
 
   const toggleTask = async (id: string, currentStatus: boolean) => {
     const nextStatus = !currentStatus;
+    const task = tasks.find((t) => t.id === id);
+    const defaultSecs = (parseInt(task?.duration || "5", 10) || 5) * 60;
 
     if (nextStatus) {
-      localStorage.removeItem(`task_timer_${id}`);
-      localStorage.removeItem(`task_timer_end_${id}`);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`task_timer_${id}`, "0");
+        localStorage.setItem(`task_completed_${id}`, "true");
+        localStorage.removeItem(`task_timer_end_${id}`);
+      }
+    } else {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`task_completed_${id}`, "false");
+        localStorage.setItem(`task_timer_${id}`, defaultSecs.toString());
+      }
     }
 
-    const updated = tasks.map((task) =>
-      task.id === id ? { ...task, completed: nextStatus } : task
+    const updated = tasks.map((t) =>
+      t.id === id
+        ? {
+            ...t,
+            completed: nextStatus,
+            remainingSeconds: nextStatus ? 0 : defaultSecs,
+            remaining_seconds: nextStatus ? 0 : defaultSecs,
+          }
+        : t
     );
     setTasks(updated);
-    localStorage.setItem("flowstate_cached_tasks", JSON.stringify(updated));
+    if (typeof window !== "undefined") {
+      localStorage.setItem("flowstate_cached_tasks", JSON.stringify(updated));
+    }
 
     try {
+      const updatePayload = nextStatus
+        ? { completed: true, remaining_seconds: 0 }
+        : { completed: false, remaining_seconds: defaultSecs };
+
       const { error } = await supabase
         .from("tasks")
-        .update({ completed: nextStatus })
+        .update(updatePayload)
         .eq("id", id);
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === "PGRST204" || error.message?.includes("remaining_seconds")) {
+          await supabase
+            .from("tasks")
+            .update({ completed: nextStatus })
+            .eq("id", id);
+        } else {
+          throw error;
+        }
+      }
     } catch (error) {
       console.warn("Supabase task toggle sync warning (local state preserved):", error);
     }
   };
 
   const deleteTask = async (id: string) => {
-    localStorage.removeItem(`task_timer_${id}`);
-    localStorage.removeItem(`task_timer_end_${id}`);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(`task_timer_${id}`);
+      localStorage.removeItem(`task_completed_${id}`);
+      localStorage.removeItem(`task_timer_end_${id}`);
+    }
     const updated = tasks.filter((task) => task.id !== id);
     setTasks(updated);
-    localStorage.setItem("flowstate_cached_tasks", JSON.stringify(updated));
+    if (typeof window !== "undefined") {
+      localStorage.setItem("flowstate_cached_tasks", JSON.stringify(updated));
+    }
 
     try {
       const { error } = await supabase.from("tasks").delete().eq("id", id);
       if (error) throw error;
     } catch (error) {
       console.warn("Supabase task deletion sync warning (local state preserved):", error);
+    }
+  };
+
+  const clearCompletedTasks = async () => {
+    const completedTasks = tasks.filter((t) => t.completed || t.remainingSeconds === 0);
+    if (completedTasks.length === 0) return;
+
+    const completedIds = completedTasks.map((t) => t.id);
+
+    if (typeof window !== "undefined") {
+      completedIds.forEach((id) => {
+        localStorage.removeItem(`task_timer_${id}`);
+        localStorage.removeItem(`task_completed_${id}`);
+        localStorage.removeItem(`task_timer_end_${id}`);
+      });
+    }
+
+    const updated = tasks.filter((t) => !t.completed && t.remainingSeconds !== 0);
+    setTasks(updated);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("flowstate_cached_tasks", JSON.stringify(updated));
+    }
+
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .delete()
+        .in("id", completedIds);
+      if (error) throw error;
+    } catch (error) {
+      console.warn("Supabase clear completed sync warning:", error);
     }
   };
 
@@ -372,6 +617,16 @@ export default function TaskList(props?: TaskListProps) {
         <h2 className="text-xl font-bold flex items-center gap-2">
           <Sparkles className="text-cyan-400 w-5 h-5" /> Most Important Tasks (MITs)
         </h2>
+        {tasks.some((t) => t.completed || t.remainingSeconds === 0) && (
+          <button
+            onClick={clearCompletedTasks}
+            className="text-xs text-slate-400 hover:text-slate-200 bg-neutral-800/60 hover:bg-neutral-800 px-3 py-1.5 rounded-lg border border-neutral-700/50 transition flex items-center gap-1.5"
+            title="Clean up completed tasks without restarting them"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-slate-400" />
+            Clear Completed
+          </button>
+        )}
       </div>
 
       <AnimatePresence>

@@ -11,6 +11,8 @@ import { ConsistencyHeatmap } from "@/components/ConsistencyHeatmap";
 import { ProfileModal } from "@/components/ProfileModal";
 import { AIDisciplineCoach } from "@/components/AIDisciplineCoach";
 import { StreakLossModal } from "@/components/StreakLossModal";
+import { RecentBlueprints } from "@/components/RecentBlueprints";
+import { TodaysBlueprintCard } from "@/components/TodaysBlueprintCard";
 import { evaluateStreakStatus, calculateConsistencyAnalytics } from "@/lib/discipline-service";
 import { checkAndSendEveningStreakAlert } from "@/lib/streak-protection";
 import { Sparkles, Flame, Zap, Shield, ArrowRight, BarChart3, Timer, CheckSquare } from "lucide-react";
@@ -187,21 +189,66 @@ export default function FlowStateDashboard() {
           localStorage.setItem("flowstate_cached_tasks", JSON.stringify(data));
         }
 
-        const formattedTasks = data.map((t) => {
-          const savedTime = localStorage.getItem(`task_timer_${t.id}`);
-          const defaultMins = parseInt(t.duration, 10) || 5;
+        const formattedTasks: Task[] = data.map((t) => {
+          const isCompletedSaved =
+            typeof window !== "undefined" &&
+            localStorage.getItem(`task_completed_${t.id}`) === "true";
+          const savedTime =
+            typeof window !== "undefined"
+              ? localStorage.getItem(`task_timer_${t.id}`)
+              : null;
+          const isTaskCompleted = Boolean(
+            t.completed ||
+              t.remaining_seconds === 0 ||
+              isCompletedSaved ||
+              savedTime === "0"
+          );
+
+          if (isTaskCompleted) {
+            if (typeof window !== "undefined") {
+              localStorage.setItem(`task_timer_${t.id}`, "0");
+              localStorage.setItem(`task_completed_${t.id}`, "true");
+              localStorage.removeItem(`task_timer_end_${t.id}`);
+            }
+            return {
+              ...t,
+              completed: true,
+              remainingSeconds: 0,
+              remaining_seconds: 0,
+            };
+          }
+
+          const defaultMins = parseInt(t.duration || "5", 10) || 5;
 
           let remaining: number;
           if (savedTime !== null) {
             remaining = parseInt(savedTime, 10);
+          } else if (t.remaining_seconds !== undefined && t.remaining_seconds !== null) {
+            remaining = t.remaining_seconds;
           } else {
             remaining = defaultMins * 60;
           }
 
-          localStorage.removeItem(`task_timer_end_${t.id}`);
+          if (remaining <= 0) {
+            if (typeof window !== "undefined") {
+              localStorage.setItem(`task_timer_${t.id}`, "0");
+              localStorage.setItem(`task_completed_${t.id}`, "true");
+            }
+            return {
+              ...t,
+              completed: true,
+              remainingSeconds: 0,
+              remaining_seconds: 0,
+            };
+          }
+
+          if (typeof window !== "undefined") {
+            localStorage.removeItem(`task_timer_end_${t.id}`);
+          }
 
           return {
             ...t,
+            completed: false,
             remainingSeconds: isNaN(remaining) ? defaultMins * 60 : remaining,
           };
         });
@@ -214,7 +261,26 @@ export default function FlowStateDashboard() {
         if (cached) {
           try {
             const parsed = JSON.parse(cached);
-            setTasks(parsed);
+            const normalized = parsed.map((t: Task) => {
+              const isCompletedSaved = localStorage.getItem(`task_completed_${t.id}`) === "true";
+              const savedTime = localStorage.getItem(`task_timer_${t.id}`);
+              if (t.completed || t.remaining_seconds === 0 || isCompletedSaved || savedTime === "0") {
+                return {
+                  ...t,
+                  completed: true,
+                  remainingSeconds: 0,
+                  remaining_seconds: 0,
+                };
+              }
+              const defaultMins = parseInt(t.duration || "5", 10) || 5;
+              const rem = savedTime !== null ? parseInt(savedTime, 10) : (t.remainingSeconds ?? defaultMins * 60);
+              return {
+                ...t,
+                completed: false,
+                remainingSeconds: isNaN(rem) ? defaultMins * 60 : rem,
+              };
+            });
+            setTasks(normalized);
           } catch {
             // retain existing
           }
@@ -375,6 +441,21 @@ export default function FlowStateDashboard() {
                   />
                 </motion.section>
 
+                {/* TODAY'S FOCUS BLUEPRINT PROMINENT CARD */}
+                <motion.section variants={itemVariants}>
+                  <TodaysBlueprintCard
+                    onEditBlueprint={(bp) => {
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(
+                          new CustomEvent("flowstate_reuse_blueprint", {
+                            detail: bp,
+                          })
+                        );
+                      }
+                    }}
+                  />
+                </motion.section>
+
                 {/* AI DISCIPLINE COACH & REALITY CHECK WIDGET */}
                 <motion.section variants={itemVariants}>
                   <AIDisciplineCoach
@@ -410,8 +491,19 @@ export default function FlowStateDashboard() {
                     />
                   </div>
 
-                  <div className="lg:col-span-7">
+                  <div className="lg:col-span-7 space-y-6">
                     <TaskList tasks={tasks} setTasks={setTasks} isFocusActive={timerActive} />
+                    <RecentBlueprints
+                      onReuseBlueprint={(bp) => {
+                        if (typeof window !== "undefined") {
+                          window.dispatchEvent(
+                            new CustomEvent("flowstate_reuse_blueprint", {
+                              detail: bp,
+                            })
+                          );
+                        }
+                      }}
+                    />
                   </div>
                 </motion.section>
 

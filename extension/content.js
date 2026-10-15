@@ -13,21 +13,18 @@ window.addEventListener("message", (event) => {
   if (type === "FLOWSTATE_LOCKDOWN_START") {
     console.log('[FlowState content.js] Forwarding to background:', event.data.type);
 
-    const blockedDomains = (payload && Array.isArray(payload.blockedDomains) && payload.blockedDomains.length > 0)
-      ? payload.blockedDomains
-      : [
-          "instagram.com",
-          "reddit.com",
-          "tiktok.com",
-          "twitter.com",
-          "facebook.com",
-          "youtube.com/shorts",
-        ];
+    const allowlistDomains = (payload && Array.isArray(payload.allowlistDomains))
+      ? payload.allowlistDomains
+      : [];
+    const blockedPaths = (payload && Array.isArray(payload.blockedPaths))
+      ? payload.blockedPaths
+      : [];
 
     chrome.runtime.sendMessage(
       {
         type: "FLOWSTATE_LOCKDOWN_START",
-        blockedDomains,
+        allowlistDomains,
+        blockedPaths,
         flowstateUrl: window.location.href,
       },
       (response) => {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FlowState Lockdown Active</title>
+  <title>FlowState Focus Landing</title>
   <style>
     * {
       box-sizing: border-box;
@@ -20,18 +20,22 @@
       align-items: center;
       justify-content: center;
       padding: 1.5rem;
+      background-image: 
+        radial-gradient(at 15% 15%, rgba(16, 185, 129, 0.08) 0px, transparent 55%),
+        radial-gradient(at 85% 85%, rgba(99, 102, 241, 0.08) 0px, transparent 55%);
     }
 
     .card {
-      background: rgba(15, 23, 42, 0.95);
-      border: 1px solid rgba(244, 63, 94, 0.3);
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 35px rgba(244, 63, 94, 0.15);
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 35px rgba(16, 185, 129, 0.08);
       border-radius: 1.5rem;
-      padding: 2.5rem 2rem;
-      max-width: 28rem;
+      padding: 2.25rem 2rem;
+      max-width: 30rem;
       width: 100%;
       text-align: center;
-      backdrop-filter: blur(16px);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
     }
 
     .badge {
@@ -39,130 +43,180 @@
       align-items: center;
       gap: 0.5rem;
       background: rgba(244, 63, 94, 0.15);
-      border: 1px solid rgba(244, 63, 94, 0.3);
+      border: 1px solid rgba(244, 63, 94, 0.35);
       color: #fb7185;
       font-size: 0.75rem;
-      font-weight: 800;
-      letter-spacing: 0.1em;
+      font-weight: 700;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
       padding: 0.35rem 0.85rem;
       border-radius: 9999px;
       margin-bottom: 1.25rem;
     }
 
-    .icon-container {
-      margin: 0 auto 1.25rem;
-      width: 4rem;
-      height: 4rem;
-      border-radius: 1rem;
-      background: rgba(244, 63, 94, 0.1);
-      border: 1px solid rgba(244, 63, 94, 0.25);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 2rem;
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 9999px;
+      background-color: #f43f5e;
+      box-shadow: 0 0 8px #f43f5e;
     }
 
     h1 {
-      font-size: 1.35rem;
+      font-size: 1.3rem;
       font-weight: 800;
       color: #ffffff;
-      margin-bottom: 0.75rem;
-      line-height: 1.3;
+      margin-bottom: 0.65rem;
+      line-height: 1.35;
     }
 
-    p.description {
+    p.subtitle {
       font-size: 0.875rem;
-      color: #cbd5e1;
+      color: #94a3b8;
       line-height: 1.5;
-      margin-bottom: 1.75rem;
-    }
-
-    .countdown-container {
-      background: rgba(2, 6, 23, 0.7);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 1rem;
-      padding: 1rem;
       margin-bottom: 1.5rem;
     }
 
-    .countdown-text {
-      font-size: 0.8rem;
-      color: #94a3b8;
-      margin-bottom: 0.5rem;
-    }
-
-    .countdown-number {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 1.5rem;
-      font-weight: 800;
+    .section-label {
+      font-size: 0.725rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
       color: #10b981;
+      margin-bottom: 0.75rem;
+      text-align: left;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
     }
 
-    .progress-bar-bg {
+    .domains-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      margin-bottom: 1.75rem;
+    }
+
+    .domain-btn {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 0.75rem;
       width: 100%;
-      height: 4px;
-      background: rgba(255, 255, 255, 0.08);
-      border-radius: 9999px;
-      overflow: hidden;
-      margin-top: 0.75rem;
+      padding: 0.85rem 1.15rem;
+      background: rgba(30, 41, 59, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 0.875rem;
+      color: #f8fafc;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: left;
     }
 
-    .progress-bar-fill {
-      height: 100%;
-      width: 100%;
-      background: linear-gradient(90deg, #10b981, #14b8a6);
-      transition: width 1s linear;
+    .domain-btn:hover {
+      background: rgba(51, 65, 85, 0.85);
+      border-color: rgba(16, 185, 129, 0.5);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4), 0 0 15px rgba(16, 185, 129, 0.15);
+      color: #ffffff;
     }
 
-    .button {
-      display: inline-flex;
+    .domain-btn:active {
+      transform: translateY(0);
+    }
+
+    .domain-btn .icon {
+      font-size: 1.25rem;
+      line-height: 1;
+      display: flex;
       align-items: center;
       justify-content: center;
-      width: 100%;
-      padding: 0.75rem 1.25rem;
-      background: linear-gradient(135deg, #10b981, #0d9488);
-      color: #020617;
-      text-decoration: none;
+      width: 1.75rem;
+      height: 1.75rem;
+      flex-shrink: 0;
+    }
+
+    .domain-btn .label {
+      flex: 1;
+    }
+
+    .domain-btn .arrow {
+      color: #64748b;
       font-size: 0.875rem;
-      font-weight: 800;
+      transition: transform 0.2s ease, color 0.2s ease;
+    }
+
+    .domain-btn:hover .arrow {
+      color: #10b981;
+      transform: translateX(3px);
+    }
+
+    .empty-state {
+      padding: 1.25rem;
+      background: rgba(2, 6, 23, 0.5);
+      border: 1px dashed rgba(255, 255, 255, 0.12);
       border-radius: 0.875rem;
-      box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.4);
-      transition: all 0.2s ease;
+      color: #64748b;
+      font-size: 0.825rem;
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding-top: 1.25rem;
+      margin-top: 0.5rem;
+    }
+
+    .settings-prompt {
+      font-size: 0.825rem;
+      color: #94a3b8;
+      line-height: 1.5;
+    }
+
+    .settings-link {
+      color: #38bdf8;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      font-weight: 600;
       cursor: pointer;
-      border: none;
+      transition: color 0.15s ease;
     }
 
-    .button:hover {
-      filter: brightness(1.1);
-      transform: translateY(-1px);
-    }
-
-    .button:active {
-      transform: translateY(0);
+    .settings-link:hover {
+      color: #7dd3fc;
     }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="icon-container">🚫</div>
-    <div class="badge">Lockdown Active</div>
-    <h1>Site Blocked</h1>
-    <p class="description">
-      🚫 Focus Lockdown Active. This site is blocked during your FlowState session. Return to FlowState.
-    </p>
-
-    <div class="countdown-container">
-      <div class="countdown-text">Auto-redirecting back to deep flow in</div>
-      <div class="countdown-number" id="countdown">3s</div>
-      <div class="progress-bar-bg">
-        <div class="progress-bar-fill" id="progress"></div>
-      </div>
+    <div class="badge">
+      <span class="badge-dot"></span>
+      <span>Lockdown Active</span>
     </div>
 
-    <a href="http://localhost:3000" id="return-link" class="button">
-      Return to FlowState Now →
-    </a>
+    <h1>🚫 This site is not part of today's focus blueprint.</h1>
+    <p class="subtitle">
+      Stay in flow. Jump into an approved resource for today&apos;s focus session:
+    </p>
+
+    <div class="section-label">
+      <span>Allowed Focus Resources</span>
+    </div>
+
+    <div id="allowed-domains" class="domains-list">
+      <!-- Injected by blocked.js -->
+    </div>
+
+    <div class="footer">
+      <p class="settings-prompt">
+        Are you sure this site should be blocked?
+        <a href="http://localhost:3000" id="flowstate-settings-link" class="settings-link">[Open FlowState Settings]</a>
+      </p>
+    </div>
   </div>
 
   <script src="blocked.js"></script>
