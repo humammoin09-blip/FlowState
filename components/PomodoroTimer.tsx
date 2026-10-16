@@ -28,6 +28,7 @@ import {
 import { PanicButton } from "@/components/PanicButton";
 import { PanicInterventionModal } from "@/components/PanicInterventionModal";
 import { FocusBlueprintModal, FocusBlueprintRecord } from "@/components/FocusBlueprintModal";
+import { handleSessionCompletedStreakUpdate } from "@/lib/streak-service";
 
 export type TimerMode = "focus" | "shortBreak" | "longBreak";
 
@@ -569,9 +570,15 @@ export function PomodoroTimer({
         } catch (err) {
           console.warn("Offline/Network notice saving focus session:", err);
         }
-      })();
 
-      if (onFocusComplete) onFocusComplete();
+        try {
+          await handleSessionCompletedStreakUpdate(sessionMins);
+        } catch (streakErr) {
+          console.warn("Streak update error:", streakErr);
+        }
+
+        if (onFocusComplete) onFocusComplete();
+      })();
     }
 
     setTimeout(() => {

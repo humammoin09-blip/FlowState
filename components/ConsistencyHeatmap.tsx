@@ -19,9 +19,18 @@ import {
   WifiOff,
   ShieldAlert,
   AlertOctagon,
+  Trophy,
+  History,
+  HeartCrack,
+  ShieldCheck,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { calculateConsistencyAnalytics } from "@/lib/discipline-service";
+import {
+  calculateStreakState,
+  fetchUserSettingsFromDB,
+  FocusSessionRecord,
+} from "@/lib/streak-service";
 
 interface DayStat {
   day: string;
@@ -58,6 +67,9 @@ export function ConsistencyHeatmap() {
   const [totalMitsCount, setTotalMitsCount] = useState<number>(0);
   const [consistencyScore, setConsistencyScore] = useState<number>(0);
   const [activeStreak, setActiveStreak] = useState<number>(0);
+  const [maxStreak, setMaxStreak] = useState<number>(0);
+  const [isStreakBroken, setIsStreakBroken] = useState<boolean>(false);
+  const [daysSinceLastBreak, setDaysSinceLastBreak] = useState<number>(0);
   const [missedDaysCount, setMissedDaysCount] = useState<number>(0);
 
   const [daysData, setDaysData] = useState<DayStat[]>([
@@ -143,8 +155,17 @@ export function ConsistencyHeatmap() {
       const calculatedScore = Math.min(100, Math.round((calculatedHours / weeklyTarget) * 100));
       setConsistencyScore(calculatedScore > 0 ? calculatedScore : 0);
 
-      // Active Streak Calculation
-      setActiveStreak(analytics.streakDays);
+      // Active Streak & Streak History Calculation
+      const userSettings = await fetchUserSettingsFromDB();
+      const streakState = calculateStreakState({
+        sessions: (sessions || []) as FocusSessionRecord[],
+        storedData: userSettings,
+      });
+
+      setActiveStreak(streakState.currentStreak);
+      setMaxStreak(streakState.maxStreak);
+      setIsStreakBroken(streakState.isStreakBroken);
+      setDaysSinceLastBreak(streakState.daysSinceLastBreak);
 
       // 2. Fetch Tasks / MITs with safe fallback
       let tasksData: Array<{ completed?: boolean }> | null = null;
@@ -445,18 +466,114 @@ export function ConsistencyHeatmap() {
           </div>
 
           {/* Active Streak */}
-          <div className="glass-card p-5 rounded-2xl border border-white/10 relative overflow-hidden bg-slate-900/60">
+          <div className={`glass-card p-5 rounded-2xl border relative overflow-hidden transition-all ${
+            isStreakBroken
+              ? "border-rose-500/30 bg-rose-950/20"
+              : activeStreak > 0
+              ? "border-emerald-500/30 bg-emerald-950/15"
+              : "border-white/10 bg-slate-900/60"
+          }`}>
             <div className="flex items-center justify-between text-slate-400 mb-2">
               <span className="text-xs font-semibold uppercase tracking-wider">Active Streak</span>
-              <Flame className="w-4 h-4 text-rose-400" />
+              {isStreakBroken ? (
+                <HeartCrack className="w-4 h-4 text-rose-400" />
+              ) : (
+                <Flame className={`w-4 h-4 ${activeStreak > 0 ? "text-emerald-400" : "text-amber-400"}`} />
+              )}
             </div>
-            <div className="text-3xl font-bold text-white">{activeStreak} Days</div>
-            <div className="text-xs text-rose-400 font-medium mt-2">
-              Unique active focus days logged
+            <div className="text-3xl font-bold font-mono">
+              {isStreakBroken ? (
+                <span className="text-rose-400">Broken 💔</span>
+              ) : activeStreak > 0 ? (
+                <span className="text-white">{activeStreak} <span className="text-emerald-400 text-lg">Days 🔥</span></span>
+              ) : (
+                <span className="text-slate-300">Start Today</span>
+              )}
+            </div>
+            <div className={`text-xs font-medium mt-2 ${isStreakBroken ? "text-rose-400" : "text-emerald-400"}`}>
+              {isStreakBroken ? "Streak interrupted — reset on next session" : "Unique active focus days logged"}
             </div>
           </div>
         </div>
       )}
+
+      {/* Streak History & Momentum Metrics Card */}
+      <div className="glass-card p-5 sm:p-6 rounded-3xl border border-white/10 relative overflow-hidden bg-slate-900/60 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400">
+              <History className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                Streak History & Accountability
+              </h2>
+              <p className="text-xs text-slate-400">
+                All-time personal records, streak continuity, and unbroken focus momentum.
+              </p>
+            </div>
+          </div>
+          {isStreakBroken ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold font-mono bg-rose-500/15 border border-rose-500/30 text-rose-400">
+              <HeartCrack className="w-3.5 h-3.5" />
+              Streak Broken
+            </span>
+          ) : activeStreak > 0 ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold font-mono bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+              <Flame className="w-3.5 h-3.5" />
+              Streak Active
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold font-mono bg-slate-800 text-slate-400 border border-slate-700">
+              Fresh Start
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+          {/* 1. Max Streak Achieved */}
+          <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <Trophy className="w-4 h-4 text-amber-400" />
+              Max Streak Achieved
+            </span>
+            <div className="text-2xl font-extrabold text-amber-300 font-mono pt-1">
+              {maxStreak} {maxStreak === 1 ? "Day" : "Days"} 🏆
+            </div>
+            <p className="text-[11px] text-slate-400">
+              All-time longest consistency streak
+            </p>
+          </div>
+
+          {/* 2. Current Streak */}
+          <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <Flame className={`w-4 h-4 ${isStreakBroken ? "text-rose-400" : "text-emerald-400"}`} />
+              Current Streak
+            </span>
+            <div className={`text-2xl font-extrabold font-mono pt-1 ${isStreakBroken ? "text-rose-400" : "text-white"}`}>
+              {isStreakBroken ? "0 Days (Broken)" : `${activeStreak} ${activeStreak === 1 ? "Day" : "Days"} 🔥`}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              {isStreakBroken ? "Streak broken — start session to start fresh" : "Active consecutive day chain"}
+            </p>
+          </div>
+
+          {/* 3. Days Since Last Break */}
+          <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              Days Since Last Break
+            </span>
+            <div className="text-2xl font-extrabold text-emerald-400 font-mono pt-1">
+              {daysSinceLastBreak} {daysSinceLastBreak === 1 ? "Day" : "Days"} 🛡️
+            </div>
+            <p className="text-[11px] text-slate-400">
+              {daysSinceLastBreak === 0 ? "Break registered recently" : "Consecutive days without interruption"}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Main Heatmap & Consistency Card */}
       <div className="glass-card relative p-6 rounded-3xl border border-white/10 shadow-2xl overflow-hidden group bg-slate-900/60">

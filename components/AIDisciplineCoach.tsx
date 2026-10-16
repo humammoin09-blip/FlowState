@@ -31,6 +31,7 @@ interface AIDisciplineCoachProps {
   completedTasks: number;
   totalTasks: number;
   userName: string;
+  isStreakBroken?: boolean;
   onStartFocusSession?: () => void;
   onOpenStreakLossModal?: () => void;
 }
@@ -42,6 +43,7 @@ export function AIDisciplineCoach({
   completedTasks,
   totalTasks,
   userName,
+  isStreakBroken = false,
   onStartFocusSession,
   onOpenStreakLossModal,
 }: AIDisciplineCoachProps) {
@@ -233,9 +235,13 @@ export function AIDisciplineCoach({
             <div className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
               Active Streak
             </div>
-            <div className="text-sm font-bold text-amber-400 flex items-center gap-1.5 mt-0.5">
-              <Flame className="w-3.5 h-3.5 text-amber-500" />
-              <span>{streakDays} Days</span>
+            <div className={`text-sm font-bold flex items-center gap-1.5 mt-0.5 ${
+              isStreakBroken ? "text-rose-400" : streakDays > 0 ? "text-emerald-400" : "text-amber-400"
+            }`}>
+              <Flame className={`w-3.5 h-3.5 ${
+                isStreakBroken ? "text-rose-500" : streakDays > 0 ? "text-emerald-400" : "text-amber-500"
+              }`} />
+              <span>{isStreakBroken ? "Broken 💔" : streakDays > 0 ? `${streakDays} Days` : "0 Days"}</span>
             </div>
           </div>
 

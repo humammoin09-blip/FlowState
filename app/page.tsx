@@ -15,6 +15,14 @@ import { RecentBlueprints } from "@/components/RecentBlueprints";
 import { TodaysBlueprintCard } from "@/components/TodaysBlueprintCard";
 import { evaluateStreakStatus, calculateConsistencyAnalytics } from "@/lib/discipline-service";
 import { checkAndSendEveningStreakAlert } from "@/lib/streak-protection";
+import {
+  calculateStreakState,
+  fetchUserSettingsFromDB,
+  useStreakSaver,
+  STORAGE_KEYS,
+  getLocalDateString,
+  FocusSessionRecord,
+} from "@/lib/streak-service";
 import { Sparkles, Flame, Zap, Shield, ArrowRight, BarChart3, Timer, CheckSquare } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -24,6 +32,10 @@ export default function FlowStateDashboard() {
   const [timerTime, setTimerTime] = useState<string>("25:00");
   const [focusHours, setFocusHours] = useState<number>(0.0);
   const [streakDays, setStreakDays] = useState<number>(0);
+  const [isStreakBroken, setIsStreakBroken] = useState<boolean>(false);
+  const [daysSinceLastActive, setDaysSinceLastActive] = useState<number>(0);
+  const [canUseStreakSaver, setCanUseStreakSaver] = useState<boolean>(true);
+  const [streakSaverCooldownDays, setStreakSaverCooldownDays] = useState<number>(0);
 
   // Streak Loss Modal & Psychological Alert State
   const [streakLossModalOpen, setStreakLossModalOpen] = useState<boolean>(false);
@@ -54,7 +66,6 @@ export default function FlowStateDashboard() {
           const parsed = JSON.parse(cachedSessions);
           const analytics = calculateConsistencyAnalytics(parsed);
           setFocusHours(analytics.todayHours);
-          setStreakDays(analytics.streakDays);
         } catch {
           // ignore
         }
@@ -64,73 +75,106 @@ export default function FlowStateDashboard() {
 
   const [statsLoading, setStatsLoading] = useState<boolean>(true);
 
-  // Fetch dynamic active streak and focus hours from focus_sessions table
+  // Fetch dynamic active streak and focus hours with gap comparison logic
   const fetchAnalyticsAndStreak = async () => {
     try {
       setStatsLoading(true);
       const { data: sessions, error } = await supabase
         .from("focus_sessions")
-        .select("duration_minutes, created_at");
+        .select("duration_minutes, created_at, mode");
 
       if (error) throw error;
 
-      if (sessions && sessions.length > 0) {
-        if (typeof window !== "undefined") {
-          localStorage.setItem("flowstate_cached_focus_sessions", JSON.stringify(sessions));
-        }
+      const sessionList = sessions || [];
+      if (typeof window !== "undefined" && sessions) {
+        localStorage.setItem("flowstate_cached_focus_sessions", JSON.stringify(sessions));
+      }
 
-        const analytics = calculateConsistencyAnalytics(sessions);
-        setStreakDays(analytics.streakDays);
-        setFocusHours(analytics.todayHours);
+      const analytics = calculateConsistencyAnalytics(sessionList);
+      setFocusHours(analytics.todayHours);
 
-        // Smart Streak Break Check
-        const streakEval = evaluateStreakStatus(sessions);
-        if (streakEval.isStreakBroken) {
-          setPreviousBrokenStreak(streakEval.previousStreak);
+      // Compare lastActiveDate with today's date from Supabase / localStorage
+      const userSettings = await fetchUserSettingsFromDB();
+      const streakState = calculateStreakState({
+        sessions: sessionList as FocusSessionRecord[],
+        storedData: userSettings,
+      });
+
+      setStreakDays(streakState.currentStreak);
+      setIsStreakBroken(streakState.isStreakBroken);
+      setDaysSinceLastActive(streakState.daysSinceLastActive);
+      setCanUseStreakSaver(streakState.canUseStreakSaver);
+      setStreakSaverCooldownDays(streakState.streakSaverCooldownDays);
+
+      // Smart Streak Break Check
+      if (streakState.isStreakBroken) {
+        setPreviousBrokenStreak(streakState.previousStreak);
+        const todayStr = getLocalDateString();
+        const dismissed = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEYS.MODAL_DISMISSED_DATE) : null;
+        if (dismissed !== todayStr) {
           setStreakLossModalOpen(true);
         }
-
-        // Cache last active date and streak
-        if (typeof window !== "undefined" && analytics.streakDays > 0) {
-          const now = new Date();
-          const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-          localStorage.setItem("flowstate_saved_streak", String(analytics.streakDays));
-          localStorage.setItem("flowstate_last_active_date", todayStr);
-        }
-
-        // Smart Streak Protection Check
-        checkAndSendEveningStreakAlert({
-          focusHours: analytics.todayHours,
-          streakDays: analytics.streakDays,
-          dailyGoal: Number(dailyGoal),
-        });
-      } else {
-        setStreakDays(0);
-        setFocusHours(0.0);
       }
+
+      // Smart Streak Protection Check
+      checkAndSendEveningStreakAlert({
+        focusHours: analytics.todayHours,
+        streakDays: streakState.currentStreak,
+        dailyGoal: Number(dailyGoal),
+      });
     } catch (err) {
       console.warn("Notice: Focus sessions remote fetch failed, falling back to local cache:", err);
       if (typeof window !== "undefined") {
         const cached = localStorage.getItem("flowstate_cached_focus_sessions");
+        let parsed: FocusSessionRecord[] = [];
         if (cached) {
           try {
-            const parsed = JSON.parse(cached);
+            parsed = JSON.parse(cached);
             const analytics = calculateConsistencyAnalytics(parsed);
-            setStreakDays(analytics.streakDays);
             setFocusHours(analytics.todayHours);
-
-            const streakEval = evaluateStreakStatus(parsed);
-            if (streakEval.isStreakBroken) {
-              setPreviousBrokenStreak(streakEval.previousStreak);
-              setStreakLossModalOpen(true);
-            }
           } catch {
             // retain existing
+          }
+        }
+
+        const userSettings = await fetchUserSettingsFromDB();
+        const streakState = calculateStreakState({
+          sessions: parsed,
+          storedData: userSettings,
+        });
+
+        setStreakDays(streakState.currentStreak);
+        setIsStreakBroken(streakState.isStreakBroken);
+        setDaysSinceLastActive(streakState.daysSinceLastActive);
+        setCanUseStreakSaver(streakState.canUseStreakSaver);
+        setStreakSaverCooldownDays(streakState.streakSaverCooldownDays);
+
+        if (streakState.isStreakBroken) {
+          setPreviousBrokenStreak(streakState.previousStreak);
+          const todayStr = getLocalDateString();
+          const dismissed = localStorage.getItem(STORAGE_KEYS.MODAL_DISMISSED_DATE);
+          if (dismissed !== todayStr) {
+            setStreakLossModalOpen(true);
           }
         }
       }
     } finally {
       setStatsLoading(false);
+    }
+  };
+
+  const handleUseStreakSaver = async () => {
+    const result = await useStreakSaver();
+    if (result.success && result.data) {
+      setStreakDays(result.data.currentStreak);
+      setIsStreakBroken(false);
+      setDaysSinceLastActive(result.data.daysSinceLastActive);
+      setCanUseStreakSaver(false);
+      setStreakSaverCooldownDays(30);
+      setStreakLossModalOpen(false);
+      fetchAnalyticsAndStreak();
+    } else {
+      alert(result.message);
     }
   };
 
@@ -438,6 +482,11 @@ export default function FlowStateDashboard() {
                     totalTasks={tasks.length}
                     dailyGoalHours={Number(dailyGoal)}
                     loading={statsLoading}
+                    isStreakBroken={isStreakBroken}
+                    daysSinceLastActive={daysSinceLastActive}
+                    canUseStreakSaver={canUseStreakSaver}
+                    onUseStreakSaver={handleUseStreakSaver}
+                    onOpenStreakLossModal={() => setStreakLossModalOpen(true)}
                   />
                 </motion.section>
 
@@ -465,6 +514,7 @@ export default function FlowStateDashboard() {
                     completedTasks={completedCount}
                     totalTasks={tasks.length}
                     userName={userName}
+                    isStreakBroken={isStreakBroken}
                     onStartFocusSession={() => {
                       if (typeof window !== "undefined") {
                         window.dispatchEvent(new CustomEvent("flowstate_start_timer"));
@@ -537,7 +587,7 @@ export default function FlowStateDashboard() {
                     timerTime={timerTime}
                     setTimerTime={setTimerTime}
                     onFocusComplete={() => {
-                      setFocusHours((prev) => +(prev + 0.42).toFixed(1));
+                      fetchAnalyticsAndStreak();
                     }}
                   />
                 </div>
@@ -593,17 +643,21 @@ export default function FlowStateDashboard() {
         onClose={() => {
           setStreakLossModalOpen(false);
           if (typeof window !== "undefined") {
-            const todayStr = new Date().toISOString().split("T")[0];
-            localStorage.setItem("flowstate_streak_modal_dismissed_date", todayStr);
+            const todayStr = getLocalDateString();
+            localStorage.setItem(STORAGE_KEYS.MODAL_DISMISSED_DATE, todayStr);
           }
         }}
         previousStreak={previousBrokenStreak}
         userName={userName}
+        canUseStreakSaver={canUseStreakSaver}
+        streakSaverCooldownDays={streakSaverCooldownDays}
+        daysSinceLastActive={daysSinceLastActive}
+        onUseStreakSaver={handleUseStreakSaver}
         onRebuildStreak={() => {
           setStreakLossModalOpen(false);
           if (typeof window !== "undefined") {
-            const todayStr = new Date().toISOString().split("T")[0];
-            localStorage.setItem("flowstate_streak_modal_dismissed_date", todayStr);
+            const todayStr = getLocalDateString();
+            localStorage.setItem(STORAGE_KEYS.MODAL_DISMISSED_DATE, todayStr);
             window.dispatchEvent(new CustomEvent("flowstate_start_timer"));
           }
         }}

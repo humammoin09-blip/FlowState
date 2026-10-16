@@ -107,12 +107,25 @@ export async function fetchStreakLossQuote(params: {
  * Calculates current week and today's focus hours using the exact same timezone-normalized
  * daily session calculation as ConsistencyHeatmap.tsx
  */
+import {
+  calculateStreakState,
+  FocusSessionRecord,
+  getLocalDateString,
+  getDayDifference,
+} from "@/lib/streak-service";
+
+/**
+ * Calculates current week and today's focus hours using timezone-normalized
+ * daily session calculation. Accurately determines streak count based on
+ * active day criteria and gap analysis.
+ */
 export function calculateConsistencyAnalytics(
-  sessions: Array<{ duration_minutes?: number; created_at?: string }>
+  sessions: Array<{ duration_minutes?: number; created_at?: string; mode?: string }>
 ): {
   todayHours: number;
   todayMins: number;
   streakDays: number;
+  isStreakBroken: boolean;
   todayDayName: string;
   dayMap: Record<string, { mins: number; count: number }>;
 } {
@@ -136,11 +149,9 @@ export function calculateConsistencyAnalytics(
     Sun: { mins: 0, count: 0 },
   };
 
-  const activeDatesSet = new Set<string>();
-
   if (sessions && sessions.length > 0) {
     sessions.forEach((s) => {
-      const mins = s.duration_minutes || 25;
+      const mins = s.duration_minutes || 0;
 
       if (s.created_at) {
         let rawTimestamp = s.created_at;
@@ -151,12 +162,6 @@ export function calculateConsistencyAnalytics(
         if (isNaN(dateObj.getTime())) return;
 
         const sessionMs = dateObj.getTime();
-
-        const localYear = dateObj.getFullYear();
-        const localMonth = String(dateObj.getMonth() + 1).padStart(2, "0");
-        const localDate = String(dateObj.getDate()).padStart(2, "0");
-        const localDateStr = `${localYear}-${localMonth}-${localDate}`;
-        activeDatesSet.add(localDateStr);
 
         if (sessionMs >= startOfWeekMs && sessionMs <= endOfWeekMs) {
           const localDayIndex = (dateObj.getDay() + 6) % 7;
@@ -175,89 +180,102 @@ export function calculateConsistencyAnalytics(
   const todayMins = dayMap[todayDayName].mins;
   const todayHours = Number((todayMins / 60).toFixed(1));
 
+  // Retrieve stored settings from localStorage for consistent streak state
+  let storedStreak = 0;
+  let storedLastDate: string | null = null;
+  let storedPrevStreak = 0;
+  let storedMaxStreak = 0;
+  let storedLastBreakDate: string | null = null;
+  let storedLastStreakSaver: string | null = null;
+
+  if (typeof window !== "undefined") {
+    const s = localStorage.getItem("flowstate_saved_streak");
+    const d = localStorage.getItem("flowstate_last_active_date");
+    const p = localStorage.getItem("flowstate_previous_streak");
+    const m = localStorage.getItem("flowstate_max_streak");
+    const b = localStorage.getItem("flowstate_last_break_date");
+    const saver = localStorage.getItem("flowstate_last_streak_saver_used");
+
+    if (s) storedStreak = parseInt(s, 10);
+    if (d) storedLastDate = d;
+    if (p) storedPrevStreak = parseInt(p, 10);
+    if (m) storedMaxStreak = parseInt(m, 10);
+    if (b) storedLastBreakDate = b;
+    if (saver) storedLastStreakSaver = saver;
+  }
+
+  const streakState = calculateStreakState({
+    sessions: sessions as FocusSessionRecord[],
+    storedData: {
+      currentStreak: storedStreak,
+      lastActiveDate: storedLastDate,
+      previousStreak: storedPrevStreak,
+      maxStreak: storedMaxStreak,
+      lastBreakDate: storedLastBreakDate,
+      lastStreakSaverUsed: storedLastStreakSaver,
+    },
+    currentDate: now,
+  });
+
   return {
     todayHours,
     todayMins,
-    streakDays: activeDatesSet.size,
+    streakDays: streakState.currentStreak,
+    isStreakBroken: streakState.isStreakBroken,
     todayDayName,
     dayMap,
   };
 }
 
 /**
- * Calculates whether a consecutive streak was broken by checking session history or local cache.
+ * Calculates whether a consecutive streak was broken by checking session history and settings.
  */
-export function evaluateStreakStatus(sessions: Array<{ created_at?: string; duration_minutes?: number }>): {
+export function evaluateStreakStatus(sessions: Array<{ created_at?: string; duration_minutes?: number; mode?: string }>): {
   isStreakBroken: boolean;
   previousStreak: number;
   lastActiveDate: string | null;
+  daysSinceLastActive: number;
+  canUseStreakSaver: boolean;
 } {
   if (typeof window === "undefined") {
-    return { isStreakBroken: false, previousStreak: 0, lastActiveDate: null };
+    return {
+      isStreakBroken: false,
+      previousStreak: 0,
+      lastActiveDate: null,
+      daysSinceLastActive: 0,
+      canUseStreakSaver: true,
+    };
   }
 
   const now = new Date();
-  const formatYMD = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  };
+  const todayStr = getLocalDateString(now);
 
-  const todayStr = formatYMD(now);
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = formatYMD(yesterday);
-
-  // Extract all unique dates from sessions
-  const activeDates = new Set<string>();
-  sessions.forEach((s) => {
-    if (s.created_at) {
-      try {
-        const d = new Date(s.created_at);
-        if (!isNaN(d.getTime())) {
-          activeDates.add(formatYMD(d));
-        }
-      } catch {
-        // ignore malformed
-      }
-    }
-  });
-
+  const storedStreak = parseInt(localStorage.getItem("flowstate_saved_streak") || "0", 10);
   const storedLastDate = localStorage.getItem("flowstate_last_active_date");
-  const storedPrevStreak = parseInt(localStorage.getItem("flowstate_saved_streak") || "0", 10);
+  const storedPrevStreak = parseInt(localStorage.getItem("flowstate_previous_streak") || "0", 10);
+  const storedLastSaver = localStorage.getItem("flowstate_last_streak_saver_used");
   const modalDismissedDate = localStorage.getItem("flowstate_streak_modal_dismissed_date");
 
-  // If already shown and dismissed today, don't trigger repeatedly
-  if (modalDismissedDate === todayStr) {
-    return { isStreakBroken: false, previousStreak: storedPrevStreak, lastActiveDate: storedLastDate };
-  }
+  const streakState = calculateStreakState({
+    sessions: sessions as FocusSessionRecord[],
+    storedData: {
+      currentStreak: storedStreak,
+      lastActiveDate: storedLastDate,
+      previousStreak: storedPrevStreak,
+      lastStreakSaverUsed: storedLastSaver,
+    },
+    currentDate: now,
+  });
 
-  // Check if yesterday was missed when the user had prior activity
-  const hadActivityYesterday = activeDates.has(yesterdayStr);
-  const hadActivityToday = activeDates.has(todayStr);
-
-  let isBroken = false;
-  let prevStreak = storedPrevStreak;
-
-  if (activeDates.size > 0 && !hadActivityYesterday) {
-    // Find the latest active date before yesterday
-    const sortedDates = Array.from(activeDates).sort().reverse();
-    const latestDate = sortedDates[0];
-
-    // If the latest activity was before yesterday, and today is either not active yet or just started
-    if (latestDate && latestDate < yesterdayStr) {
-      isBroken = true;
-      prevStreak = Math.max(storedPrevStreak, activeDates.size);
-    }
-  } else if (storedLastDate && storedLastDate < yesterdayStr && storedPrevStreak > 0) {
-    isBroken = true;
-  }
+  // If already shown and dismissed today, don't trigger modal repeatedly today
+  const isDismissedToday = modalDismissedDate === todayStr;
 
   return {
-    isStreakBroken: isBroken,
-    previousStreak: prevStreak || 1,
-    lastActiveDate: storedLastDate,
+    isStreakBroken: streakState.isStreakBroken && !isDismissedToday,
+    previousStreak: streakState.previousStreak || 1,
+    lastActiveDate: streakState.lastActiveDate,
+    daysSinceLastActive: streakState.daysSinceLastActive,
+    canUseStreakSaver: streakState.canUseStreakSaver,
   };
 }
 

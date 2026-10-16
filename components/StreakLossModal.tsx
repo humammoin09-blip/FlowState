@@ -4,15 +4,15 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Flame,
-  AlertTriangle,
   RotateCcw,
-  Sparkles,
   Quote,
   X,
   Play,
   ShieldAlert,
-  ArrowRight,
+  ShieldCheck,
   Brain,
+  Clock,
+  HeartCrack,
 } from "lucide-react";
 import {
   StreakLossIntervention,
@@ -25,6 +25,10 @@ interface StreakLossModalProps {
   previousStreak: number;
   userName: string;
   onRebuildStreak?: () => void;
+  canUseStreakSaver?: boolean;
+  streakSaverCooldownDays?: number;
+  daysSinceLastActive?: number;
+  onUseStreakSaver?: () => void;
 }
 
 export function StreakLossModal({
@@ -33,9 +37,14 @@ export function StreakLossModal({
   previousStreak,
   userName,
   onRebuildStreak,
+  canUseStreakSaver = false,
+  streakSaverCooldownDays = 0,
+  daysSinceLastActive = 2,
+  onUseStreakSaver,
 }: StreakLossModalProps) {
   const [intervention, setIntervention] = useState<StreakLossIntervention | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [saverSuccessMessage, setSaverSuccessMessage] = useState<string | null>(null);
 
   const loadIntervention = async () => {
     setLoading(true);
@@ -55,6 +64,7 @@ export function StreakLossModal({
   useEffect(() => {
     if (isOpen) {
       loadIntervention();
+      setSaverSuccessMessage(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
@@ -67,6 +77,21 @@ export function StreakLossModal({
       onRebuildStreak();
     }
   };
+
+  const handleUseSaver = () => {
+    if (onUseStreakSaver) {
+      onUseStreakSaver();
+      setSaverSuccessMessage("Streak Saver applied! Your momentum is preserved.");
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+    }
+  };
+
+  const formattedDaysAgo =
+    daysSinceLastActive === 1
+      ? "yesterday"
+      : `${daysSinceLastActive || 2} days ago`;
 
   return (
     <AnimatePresence>
@@ -109,24 +134,80 @@ export function StreakLossModal({
                   <ShieldAlert className="w-8 h-8 text-rose-500" />
                 </div>
                 <div className="absolute -bottom-1 -right-1 p-1 bg-slate-950 rounded-full">
-                  <Flame className="w-4 h-4 text-amber-500" />
+                  <HeartCrack className="w-4 h-4 text-rose-400" />
                 </div>
               </div>
 
               <div>
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold tracking-wider uppercase bg-rose-500/15 border border-rose-500/30 text-rose-400 mb-2">
-                  Streak Interrupted
+                  Streak Broken 💔
                 </span>
                 <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                   The Chain Was Broken.
                 </h2>
-                <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-md mx-auto">
-                  {previousStreak > 0
-                    ? `Your streak of ${previousStreak} consecutive days has lapsed. Yesterday was missed.`
-                    : "A day without focused effort has passed. The chain rests at zero."}
-                </p>
+                <div className="text-xs sm:text-sm text-slate-400 mt-1 max-w-md mx-auto space-y-1">
+                  <p>
+                    {previousStreak > 0
+                      ? `Your streak of ${previousStreak} consecutive days has lapsed.`
+                      : "A day without focused effort has passed. The chain rests at zero."}
+                  </p>
+                  <p className="text-rose-400/90 font-medium flex items-center justify-center gap-1">
+                    <Clock className="w-3.5 h-3.5" />
+                    Last active: {formattedDaysAgo}
+                  </p>
+                </div>
               </div>
             </div>
+
+            {/* STREAK SAVER SECTION (Only 1 per 30 days) */}
+            {canUseStreakSaver && onUseStreakSaver ? (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/60 to-teal-950/50 border border-emerald-500/40 space-y-3 relative overflow-hidden"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    Streak Saver Available (1 / 30 Days)
+                  </span>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono px-2 py-0.5 rounded-full border border-emerald-500/30">
+                    Monthly Shield
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  You have 1 monthly streak saver ready. Use it now to preserve your{" "}
+                  <strong className="text-emerald-300">{previousStreak}-day active streak</strong>{" "}
+                  and prevent the reset.
+                </p>
+
+                {saverSuccessMessage ? (
+                  <div className="p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold text-center">
+                    ✓ {saverSuccessMessage}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleUseSaver}
+                    className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer active:scale-98"
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    Activate Streak Saver ({previousStreak} Days Preserved)
+                  </button>
+                )}
+              </motion.div>
+            ) : streakSaverCooldownDays > 0 ? (
+              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-slate-400 flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-slate-400">
+                  <ShieldCheck className="w-3.5 h-3.5 text-slate-500" />
+                  Monthly Streak Saver: Cooldown Active
+                </span>
+                <span className="font-mono text-[10px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                  Available in {streakSaverCooldownDays}d
+                </span>
+              </div>
+            ) : null}
 
             {/* Psychological Quote Card */}
             <div className="relative rounded-2xl bg-slate-950/80 border border-slate-800/90 p-5 sm:p-6 space-y-4">
@@ -192,7 +273,7 @@ export function StreakLossModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="w-full sm:w-auto py-3 px-5 rounded-xl font-medium text-xs text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 transition-colors"
+                className="w-full sm:w-auto py-3 px-5 rounded-xl font-medium text-xs text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 I Acknowledge
               </button>
