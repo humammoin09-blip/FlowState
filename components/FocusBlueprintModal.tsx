@@ -64,9 +64,8 @@ export function FocusBlueprintModal({
   const [customDomainInput, setCustomDomainInput] = useState<string>("");
   const [customInputError, setCustomInputError] = useState<string | null>(null);
 
-  // AI loading and source state
+  // AI loading state
   const [isLoadingAi, setIsLoadingAi] = useState<boolean>(false);
-  const [aiSource, setAiSource] = useState<"gemini" | "fallback" | null>(null);
   const fetchedForSignatureRef = useRef<string>("");
 
   // Confirmation on Escape / Cancel
@@ -174,7 +173,6 @@ export function FocusBlueprintModal({
     }
 
     setIsLoadingAi(true);
-    setAiSource(null);
 
     try {
       const res = await fetch("/api/blueprint-suggestions", {
@@ -199,7 +197,6 @@ export function FocusBlueprintModal({
       setSuggestedDomains(domains);
       // All toggleable suggestions ON by default
       setSelectedDomains(new Set(domains));
-      setAiSource(data?.source || "fallback");
       fetchedForSignatureRef.current = signature;
     } catch {
       const fallback = [
@@ -210,7 +207,6 @@ export function FocusBlueprintModal({
       ];
       setSuggestedDomains(fallback);
       setSelectedDomains(new Set(fallback));
-      setAiSource("fallback");
       fetchedForSignatureRef.current = signature;
     } finally {
       setIsLoadingAi(false);
@@ -750,11 +746,6 @@ export function FocusBlueprintModal({
                         <span className="text-[11px] font-bold uppercase tracking-wider text-[#00ff88]">
                           Step 3 of 3 • Resources Needed
                         </span>
-                        {aiSource === "gemini" && (
-                          <span className="text-[10px] font-mono text-[#00ff88] flex items-center gap-1 bg-[#00ff88]/10 px-2 py-0.5 rounded-full border border-[#00ff88]/30">
-                            <Sparkles className="w-3 h-3 text-[#00ff88]" /> Gemini 1.5 Flash
-                          </span>
-                        )}
                       </div>
                       <p className="text-xs sm:text-sm font-semibold text-white mt-1 leading-snug">
                         Based on your goal, here are the sites/tools I recommend. Add or remove any:

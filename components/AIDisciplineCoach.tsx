@@ -152,14 +152,9 @@ export function AIDisciplineCoach({
               <Brain className="w-5 h-5 text-indigo-400" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                  AI Discipline Coach & Reality Check
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono tracking-wider font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                    gemini-3.5-flash-lite
-                  </span>
-                </h3>
-              </div>
+              <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
+                AI Discipline Coach & Reality Check
+              </h3>
               <p className="text-xs text-slate-400">
                 Psychological accountability powered by Google Gemini AI
               </p>
