@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ExternalLink, Download, X } from "lucide-react";
+import { InstallGuideModal } from "./InstallGuideModal";
 
 export const STORAGE_KEY_EXTENSION_INSTALLED = "flowstate_extension_installed";
 export const STORAGE_KEY_BANNER_DISMISSED = "flowstate_extension_banner_dismissed";
@@ -20,6 +21,7 @@ export function InstallExtensionBanner({ className = "" }: InstallExtensionBanne
   const [isMounted, setIsMounted] = useState<boolean>(false);
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
   const [isDismissed, setIsDismissed] = useState<boolean>(false);
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState<boolean>(false);
 
   const checkStatus = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -104,72 +106,89 @@ export function InstallExtensionBanner({ className = "" }: InstallExtensionBanne
     } catch {}
   };
 
-  // Do not render if not mounted yet (SSR safe), or already installed, or dismissed
-  if (!isMounted || isInstalled || isDismissed) {
+  // Do not render if not mounted yet (SSR safe)
+  if (!isMounted) {
     return null;
   }
 
+  // If installed or dismissed, but modal is currently open, still show the modal
+  if (isInstalled || isDismissed) {
+    return (
+      <InstallGuideModal
+        isOpen={isGuideModalOpen}
+        onClose={() => setIsGuideModalOpen(false)}
+      />
+    );
+  }
+
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0, y: -8, scale: 0.99 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -8, height: 0, margin: 0, padding: 0 }}
-        transition={{ duration: 0.25, ease: "easeOut" }}
-        className={`relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900/95 via-slate-900/90 to-slate-950/95 border border-emerald-500/25 p-4 sm:p-5 shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_20px_rgba(16,185,129,0.06)] backdrop-blur-xl ${className}`}
-      >
-        {/* Subtle glowing backdrop accents */}
-        <div className="absolute top-0 right-1/4 w-60 h-20 bg-emerald-500/10 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-8 left-12 w-48 h-20 bg-emerald-600/10 blur-2xl pointer-events-none" />
+    <>
+      <AnimatePresence>
+        <motion.div
+          initial={{ opacity: 0, y: -8, scale: 0.99 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -8, height: 0, margin: 0, padding: 0 }}
+          transition={{ duration: 0.25, ease: "easeOut" }}
+          className={`relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900/95 via-slate-900/90 to-slate-950/95 border border-emerald-500/25 p-4 sm:p-5 shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_20px_rgba(16,185,129,0.06)] backdrop-blur-xl ${className}`}
+        >
+          {/* Subtle glowing backdrop accents */}
+          <div className="absolute top-0 right-1/4 w-60 h-20 bg-emerald-500/10 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-8 left-12 w-48 h-20 bg-emerald-600/10 blur-2xl pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          {/* Banner Text Message */}
-          <div className="flex items-center gap-3 min-w-0 pr-8 md:pr-0">
-            <div className="text-base sm:text-lg shrink-0 select-none">
-              ⚠️
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {/* Banner Text Message */}
+            <div className="flex items-center gap-3 min-w-0 pr-8 md:pr-0">
+              <div className="text-base sm:text-lg shrink-0 select-none">
+                ⚠️
+              </div>
+              <div className="text-sm font-medium text-slate-200">
+                <span className="font-semibold text-slate-100">FlowState Blocker is not installed.</span>{" "}
+                <span className="text-slate-400">Install it to block distractions.</span>
+              </div>
             </div>
-            <div className="text-sm font-medium text-slate-200">
-              <span className="font-semibold text-slate-100">FlowState Blocker is not installed.</span>{" "}
-              <span className="text-slate-400">Install it to block distractions.</span>
+
+            {/* Action Buttons & Dismiss 'X' Button */}
+            <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
+              {/* Install for Edge */}
+              <a
+                href={EDGE_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all duration-200 shadow-[0_0_15px_rgba(16,185,129,0.35)] hover:shadow-[0_0_22px_rgba(16,185,129,0.55)] hover:scale-[1.02] active:scale-[0.98] shrink-0"
+              >
+                <span>Install for Edge</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+
+              {/* Get for Chrome/Brave (opens step-by-step install guide modal) */}
+              <button
+                type="button"
+                onClick={() => setIsGuideModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 hover:text-emerald-200 border border-emerald-500/40 hover:border-emerald-400 transition-all duration-200 shadow-[0_0_12px_rgba(16,185,129,0.12)] hover:scale-[1.02] active:scale-[0.98] shrink-0"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Get for Chrome/Brave</span>
+              </button>
+
+              {/* Manual Dismiss 'X' Button */}
+              <button
+                onClick={handleDismiss}
+                aria-label="Dismiss extension banner"
+                title="Dismiss"
+                className="absolute top-3.5 right-3.5 md:static p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
+        </motion.div>
+      </AnimatePresence>
 
-          {/* Action Buttons & Dismiss 'X' Button */}
-          <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
-            {/* Install for Edge */}
-            <a
-              href={EDGE_STORE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all duration-200 shadow-[0_0_15px_rgba(16,185,129,0.35)] hover:shadow-[0_0_22px_rgba(16,185,129,0.55)] hover:scale-[1.02] active:scale-[0.98] shrink-0"
-            >
-              <span>Install for Edge</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-
-            {/* Get for Chrome/Brave */}
-            <a
-              href={CHROME_CRX_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 hover:text-emerald-200 border border-emerald-500/40 hover:border-emerald-400 transition-all duration-200 shadow-[0_0_12px_rgba(16,185,129,0.12)] hover:scale-[1.02] active:scale-[0.98] shrink-0"
-            >
-              <Download className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Get for Chrome/Brave</span>
-            </a>
-
-            {/* Manual Dismiss 'X' Button */}
-            <button
-              onClick={handleDismiss}
-              aria-label="Dismiss extension banner"
-              title="Dismiss"
-              className="absolute top-3.5 right-3.5 md:static p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </motion.div>
-    </AnimatePresence>
+      {/* Chrome/Brave/Edge Sideload Guide Modal */}
+      <InstallGuideModal
+        isOpen={isGuideModalOpen}
+        onClose={() => setIsGuideModalOpen(false)}
+      />
+    </>
   );
 }
