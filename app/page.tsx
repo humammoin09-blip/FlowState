@@ -13,6 +13,7 @@ import { AIDisciplineCoach } from "@/components/AIDisciplineCoach";
 import { StreakLossModal } from "@/components/StreakLossModal";
 import { RecentBlueprints } from "@/components/RecentBlueprints";
 import { TodaysBlueprintCard } from "@/components/TodaysBlueprintCard";
+import { InstallExtensionBanner } from "@/components/InstallExtensionBanner";
 import { evaluateStreakStatus, calculateConsistencyAnalytics } from "@/lib/discipline-service";
 import { checkAndSendEveningStreakAlert } from "@/lib/streak-protection";
 import {
@@ -488,6 +489,11 @@ export default function FlowStateDashboard() {
                     onUseStreakSaver={handleUseStreakSaver}
                     onOpenStreakLossModal={() => setStreakLossModalOpen(true)}
                   />
+                </motion.section>
+
+                {/* EXTENSION INSTALLATION ALERT BANNER */}
+                <motion.section variants={itemVariants}>
+                  <InstallExtensionBanner />
                 </motion.section>
 
                 {/* TODAY'S FOCUS BLUEPRINT PROMINENT CARD */}
