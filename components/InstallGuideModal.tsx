@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Copy, Check, Download, ExternalLink, Puzzle, Terminal } from "lucide-react";
+import { X, Copy, Check, AlertTriangle, Puzzle } from "lucide-react";
 
 export const CRX_DOWNLOAD_URL =
   "https://github.com/humammoin09-blip/Momentum-AI/releases/latest/download/extension.crx";
@@ -81,7 +81,7 @@ export function InstallGuideModal({ isOpen, onClose }: InstallGuideModalProps) {
               </div>
               <div>
                 <h2 className="text-lg sm:text-xl font-bold tracking-tight text-white">
-                  Install for Chrome, Brave, or Edge
+                  Install for Chrome or Brave
                 </h2>
                 <p className="text-xs text-slate-400 mt-0.5">
                   Follow these simple steps to install the FlowState Blocker extension
@@ -90,7 +90,7 @@ export function InstallGuideModal({ isOpen, onClose }: InstallGuideModalProps) {
             </div>
 
             {/* Steps Container */}
-            <div className="space-y-4 mb-6">
+            <div className="space-y-4 mb-5">
               {/* Step 1 */}
               <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-950/60 border border-white/5">
                 <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold shrink-0 mt-0.5">
@@ -158,31 +158,6 @@ export function InstallGuideModal({ isOpen, onClose }: InstallGuideModalProps) {
                         )}
                       </button>
                     </div>
-
-                    {/* Edge */}
-                    <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-900/80 border border-white/5">
-                      <span className="text-xs text-slate-400">
-                        <strong className="text-slate-200">For Edge:</strong> Type <code className="text-emerald-400 font-mono px-1">edge://extensions</code> in the URL bar.
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard("edge://extensions")}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition shrink-0"
-                        title="Copy URL"
-                      >
-                        {copiedUrl === "edge://extensions" ? (
-                          <>
-                            <Check className="w-3 h-3 text-emerald-400" />
-                            <span className="text-emerald-400">Copied</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3 h-3" />
-                            <span>Copy</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -218,8 +193,16 @@ export function InstallGuideModal({ isOpen, onClose }: InstallGuideModalProps) {
               </div>
             </div>
 
+            {/* High-Visibility Browser Parity Warning Note */}
+            <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs sm:text-sm leading-relaxed mb-4 shadow-[0_0_15px_rgba(245,158,11,0.08)]">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <strong className="font-semibold text-amber-300">Important:</strong> You must use the FlowState web app in the same browser where you install this extension for the blocker to work.
+              </div>
+            </div>
+
             {/* Prominent Action Button: Download .crx File */}
-            <div className="pt-2">
+            <div className="pt-1">
               <a
                 href={CRX_DOWNLOAD_URL}
                 target="_blank"
