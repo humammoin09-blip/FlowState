@@ -13,7 +13,11 @@ import { AIDisciplineCoach } from "@/components/AIDisciplineCoach";
 import { StreakLossModal } from "@/components/StreakLossModal";
 import { RecentBlueprints } from "@/components/RecentBlueprints";
 import { TodaysBlueprintCard } from "@/components/TodaysBlueprintCard";
-import { InstallExtensionBanner } from "@/components/InstallExtensionBanner";
+import {
+  InstallExtensionBanner,
+  isExtensionInstalled,
+  ExtensionRequiredModal,
+} from "@/components/InstallExtensionBanner";
 import { evaluateStreakStatus, calculateConsistencyAnalytics } from "@/lib/discipline-service";
 import { checkAndSendEveningStreakAlert } from "@/lib/streak-protection";
 import {
@@ -48,6 +52,17 @@ export default function FlowStateDashboard() {
   const [dailyGoal, setDailyGoal] = useState<number>(6);
   const [userAvatar, setUserAvatar] = useState<string>("🚀");
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
+  const [extensionRequiredModalOpen, setExtensionRequiredModalOpen] = useState<boolean>(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+
+  // Listen for global extension required events
+  useEffect(() => {
+    const handleReq = () => setExtensionRequiredModalOpen(true);
+    window.addEventListener("flowstate_show_extension_required", handleReq);
+    return () => {
+      window.removeEventListener("flowstate_show_extension_required", handleReq);
+    };
+  }, []);
 
   // Load profile from localStorage on mount
   useEffect(() => {
@@ -448,11 +463,13 @@ export default function FlowStateDashboard() {
         userAvatar={userAvatar}
         userName={userName}
         userTitle={userTitle}
+        isMobileOpen={mobileMenuOpen}
+        onCloseMobile={() => setMobileMenuOpen(false)}
       />
 
       {/* Main Container */}
-      <div className="flex-1 flex flex-col min-w-0 z-10">
-        {/* Top Header with Profile Click Handler */}
+      <div className="flex-1 flex flex-col min-w-0 z-10 overflow-x-hidden">
+        {/* Top Header with Profile Click Handler & Mobile Menu Toggle */}
         <Header 
           timerActive={timerActive} 
           timerTime={timerTime} 
@@ -460,10 +477,11 @@ export default function FlowStateDashboard() {
           userTitle={userTitle}
           userAvatar={userAvatar}
           onOpenProfile={() => setIsProfileOpen(true)}
+          onToggleMobileMenu={() => setMobileMenuOpen((prev) => !prev)}
         />
 
         {/* Content Area */}
-        <main className="flex-1 px-4 sm:px-8 py-6 space-y-6 max-w-7xl w-full mx-auto">
+        <main className="flex-1 px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6 max-w-7xl w-full mx-auto overflow-x-hidden">
           <AnimatePresence mode="wait">
             {activeTab === "dashboard" && (
               <motion.div
@@ -472,9 +490,14 @@ export default function FlowStateDashboard() {
                 initial="hidden"
                 animate="show"
                 exit={{ opacity: 0, y: -10 }}
-                className="space-y-6"
+                className="space-y-4 sm:space-y-6 md:space-y-8 pb-8"
               >
-                {/* TOP ROW: 3 Dynamic Stat Cards */}
+                {/* EXTENSION INSTALLATION ALERT BANNER */}
+                <motion.section variants={itemVariants}>
+                  <InstallExtensionBanner />
+                </motion.section>
+
+                {/* TOP ROW: 3 Dynamic Stat Cards (Today's Focus, Active Streak, Task Completion) */}
                 <motion.section variants={itemVariants}>
                   <StatCards
                     totalFocusHours={focusHours}
@@ -491,21 +514,19 @@ export default function FlowStateDashboard() {
                   />
                 </motion.section>
 
-                {/* EXTENSION INSTALLATION ALERT BANNER */}
-                <motion.section variants={itemVariants}>
-                  <InstallExtensionBanner />
-                </motion.section>
-
                 {/* TODAY'S FOCUS BLUEPRINT PROMINENT CARD */}
                 <motion.section variants={itemVariants}>
                   <TodaysBlueprintCard
                     onEditBlueprint={(bp) => {
+                      setActiveTab("timer");
                       if (typeof window !== "undefined") {
-                        window.dispatchEvent(
-                          new CustomEvent("flowstate_reuse_blueprint", {
-                            detail: bp,
-                          })
-                        );
+                        setTimeout(() => {
+                          window.dispatchEvent(
+                            new CustomEvent("flowstate_reuse_blueprint", {
+                              detail: bp,
+                            })
+                          );
+                        }, 100);
                       }
                     }}
                   />
@@ -522,50 +543,19 @@ export default function FlowStateDashboard() {
                     userName={userName}
                     isStreakBroken={isStreakBroken}
                     onStartFocusSession={() => {
+                      if (!isExtensionInstalled()) {
+                        setExtensionRequiredModalOpen(true);
+                        return;
+                      }
+                      setActiveTab("timer");
                       if (typeof window !== "undefined") {
-                        window.dispatchEvent(new CustomEvent("flowstate_start_timer"));
+                        setTimeout(() => {
+                          window.dispatchEvent(new CustomEvent("flowstate_start_timer"));
+                        }, 100);
                       }
                     }}
                     onOpenStreakLossModal={() => setStreakLossModalOpen(true)}
                   />
-                </motion.section>
-
-                {/* MIDDLE SECTION: Split Layout (Pomodoro Timer Left, Daily MITs Right) */}
-                <motion.section
-                  variants={itemVariants}
-                  className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch"
-                >
-                  <div className="lg:col-span-5">
-                    <PomodoroTimer
-                      timerActive={timerActive}
-                      setTimerActive={setTimerActive}
-                      timerTime={timerTime}
-                      setTimerTime={setTimerTime}
-                      onFocusComplete={() => {
-                        fetchAnalyticsAndStreak();
-                      }}
-                    />
-                  </div>
-
-                  <div className="lg:col-span-7 space-y-6">
-                    <TaskList tasks={tasks} setTasks={setTasks} isFocusActive={timerActive} />
-                    <RecentBlueprints
-                      onReuseBlueprint={(bp) => {
-                        if (typeof window !== "undefined") {
-                          window.dispatchEvent(
-                            new CustomEvent("flowstate_reuse_blueprint", {
-                              detail: bp,
-                            })
-                          );
-                        }
-                      }}
-                    />
-                  </div>
-                </motion.section>
-
-                {/* BOTTOM SECTION: Weekly Consistency Heatmap */}
-                <motion.section variants={itemVariants}>
-                  <ConsistencyHeatmap />
                 </motion.section>
               </motion.div>
             )}
@@ -576,17 +566,17 @@ export default function FlowStateDashboard() {
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0 }}
-                className="max-w-2xl mx-auto py-8"
+                className="max-w-3xl mx-auto py-2 sm:py-6 space-y-4 sm:space-y-6"
               >
-                <div className="mb-4 text-center">
-                  <h2 className="text-2xl font-extrabold text-white">
+                <div className="text-center">
+                  <h2 className="text-xl sm:text-2xl font-extrabold text-white">
                     Full-Screen Focus Chamber
                   </h2>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">
                     Minimize distractions and step into ultra-deep flow
                   </p>
                 </div>
-                <div className="h-[520px]">
+                <div>
                   <PomodoroTimer
                     timerActive={timerActive}
                     setTimerActive={setTimerActive}
@@ -594,6 +584,19 @@ export default function FlowStateDashboard() {
                     setTimerTime={setTimerTime}
                     onFocusComplete={() => {
                       fetchAnalyticsAndStreak();
+                    }}
+                  />
+                </div>
+                <div className="pt-2">
+                  <RecentBlueprints
+                    onReuseBlueprint={(bp) => {
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(
+                          new CustomEvent("flowstate_reuse_blueprint", {
+                            detail: bp,
+                          })
+                        );
+                      }
                     }}
                   />
                 </div>
@@ -661,10 +664,32 @@ export default function FlowStateDashboard() {
         onUseStreakSaver={handleUseStreakSaver}
         onRebuildStreak={() => {
           setStreakLossModalOpen(false);
+          if (!isExtensionInstalled()) {
+            setExtensionRequiredModalOpen(true);
+            return;
+          }
+          setActiveTab("timer");
           if (typeof window !== "undefined") {
             const todayStr = getLocalDateString();
             localStorage.setItem(STORAGE_KEYS.MODAL_DISMISSED_DATE, todayStr);
-            window.dispatchEvent(new CustomEvent("flowstate_start_timer"));
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent("flowstate_start_timer"));
+            }, 100);
+          }
+        }}
+      />
+
+      {/* Extension Required Blocking Modal */}
+      <ExtensionRequiredModal
+        isOpen={extensionRequiredModalOpen}
+        onClose={() => setExtensionRequiredModalOpen(false)}
+        onSuccess={() => {
+          setExtensionRequiredModalOpen(false);
+          setActiveTab("timer");
+          if (typeof window !== "undefined") {
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent("flowstate_start_timer"));
+            }, 100);
           }
         }}
       />

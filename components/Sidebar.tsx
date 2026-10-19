@@ -16,6 +16,8 @@ import {
   Zap,
   Flame,
   UserCheck,
+  X,
+  Menu,
 } from "lucide-react";
 
 export type NavTab = "dashboard" | "timer" | "tasks" | "analytics";
@@ -29,6 +31,8 @@ interface SidebarProps {
   userAvatar?: string;
   userName?: string;
   userTitle?: string;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export function Sidebar({
@@ -40,6 +44,8 @@ export function Sidebar({
   userAvatar = "🚀",
   userName = "Alex Vance",
   userTitle = "Flow Master",
+  isMobileOpen = false,
+  onCloseMobile,
 }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -79,12 +85,14 @@ export function Sidebar({
   ];
 
   return (
-    <motion.aside
-      initial={false}
-      animate={{ width: isCollapsed ? 80 : 256 }}
-      transition={{ duration: 0.3, ease: "easeInOut" }}
-      className="relative flex flex-col h-screen sticky top-0 z-30 bg-slate-950/80 backdrop-blur-2xl border-r border-white/10 select-none shadow-[4px_0_24px_rgba(0,0,0,0.5)] shrink-0"
-    >
+    <>
+      {/* Desktop Persistent Sidebar (hidden on mobile) */}
+      <motion.aside
+        initial={false}
+        animate={{ width: isCollapsed ? 80 : 256 }}
+        transition={{ duration: 0.3, ease: "easeInOut" }}
+        className="hidden md:flex flex-col h-screen sticky top-0 z-30 bg-slate-950/80 backdrop-blur-2xl border-r border-white/10 select-none shadow-[4px_0_24px_rgba(0,0,0,0.5)] shrink-0"
+      >
       {/* Collapse Toggle Button */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
@@ -230,5 +238,119 @@ export function Sidebar({
         </div>
       </div>
     </motion.aside>
+
+    {/* Mobile Drawer Overlay (Slide-out menu for < md screens) */}
+    <AnimatePresence>
+      {isMobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex">
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={onCloseMobile}
+            className="fixed inset-0 bg-black/80 backdrop-blur-md"
+          />
+
+          {/* Slide-out Drawer */}
+          <motion.aside
+            initial={{ x: "-100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "-100%" }}
+            transition={{ type: "spring", stiffness: 350, damping: 32 }}
+            className="relative w-72 max-w-[85vw] h-full bg-slate-950/95 backdrop-blur-2xl border-r border-white/10 flex flex-col z-10 shadow-2xl overflow-y-auto"
+          >
+            {/* Header with Brand & Close Button */}
+            <div className="flex items-center justify-between px-5 py-5 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-indigo-600 p-[1px] shadow-[0_0_15px_rgba(16,185,129,0.35)] shrink-0">
+                  <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+                    <Zap className="w-4 h-4 text-emerald-400 fill-emerald-400/20" />
+                  </div>
+                </div>
+                <div>
+                  <span className="font-bold tracking-tight text-base bg-gradient-to-r from-slate-100 via-white to-slate-300 bg-clip-text text-transparent">
+                    FlowState
+                  </span>
+                  <span className="text-[10px] block font-medium text-slate-400">DEEP WORK OS</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={onCloseMobile}
+                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                aria-label="Close menu"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Navigation Items */}
+            <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
+              <div className="px-3 pb-2 text-[10px] font-semibold text-slate-500 uppercase tracking-widest">
+                Navigation
+              </div>
+
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      if (onCloseMobile) onCloseMobile();
+                    }}
+                    className={`relative flex items-center w-full px-3 py-3 rounded-xl font-medium text-sm transition-all duration-200 group cursor-pointer ${
+                      isActive
+                        ? "text-white bg-slate-900/90 border border-white/10 shadow-[0_4px_20px_rgba(0,0,0,0.4)]"
+                        : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
+                    }`}
+                  >
+                    {isActive && (
+                      <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-emerald-500/15 via-indigo-500/10 to-transparent border-l-2 border-emerald-400" />
+                    )}
+                    <Icon className={`w-5 h-5 shrink-0 z-10 ${isActive ? "text-emerald-400" : "text-slate-400"}`} />
+                    <span className="ml-3 font-medium whitespace-nowrap z-10 flex-1 text-left">{item.label}</span>
+                    {item.badge && <div className="z-10 ml-auto">{item.badge}</div>}
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* Soundscape & User Profile */}
+            <div className="p-3 border-t border-white/5 space-y-3">
+              <SoundscapePlayer />
+
+              <div className="relative flex items-center gap-3 p-2.5 rounded-xl bg-slate-900/60 border border-white/10">
+                <div className="relative shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-500 to-indigo-500 p-[1.5px] shadow-sm overflow-hidden">
+                    <div className="w-full h-full bg-slate-950 rounded-full flex items-center justify-center text-xs font-bold text-emerald-400 overflow-hidden">
+                      {userAvatar && (userAvatar.startsWith("data:image/") || userAvatar.startsWith("http")) ? (
+                        <img src={userAvatar} alt="Avatar" className="w-full h-full object-cover" />
+                      ) : userAvatar ? (
+                        <span className="text-xs">{userAvatar}</span>
+                      ) : (
+                        "AX"
+                      )}
+                    </div>
+                  </div>
+                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-slate-950 shadow-[0_0_8px_#10b981]" />
+                </div>
+                <div className="flex flex-col text-left overflow-hidden flex-1">
+                  <span className="text-xs font-semibold text-slate-200 truncate">{userName}</span>
+                  <span className="text-[10px] text-emerald-400/90 font-medium flex items-center gap-1 truncate">
+                    <Sparkles className="w-2.5 h-2.5 shrink-0" /> {userTitle}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </motion.aside>
+        </div>
+      )}
+    </AnimatePresence>
+  </>
   );
 }

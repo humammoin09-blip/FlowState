@@ -138,7 +138,7 @@ export function PanicButton({
       whileHover={{ scale: isHolding ? 1.05 : 1.02 }}
       whileTap={{ scale: 0.98 }}
       transition={{ duration: 0.15, ease: "easeOut" }}
-      className={`relative select-none flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border transition-all duration-200 shadow-lg touch-none cursor-pointer overflow-hidden ${
+      className={`relative select-none flex items-center gap-2 sm:gap-2.5 px-2.5 sm:px-3.5 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl border transition-all duration-200 shadow-lg touch-none cursor-pointer overflow-hidden ${
         isHolding
           ? "bg-rose-500/25 border-rose-500 text-rose-200 shadow-[0_0_30px_rgba(244,63,94,0.5)] ring-2 ring-rose-500/50"
           : "bg-slate-900/80 border-rose-500/30 text-rose-300 hover:border-rose-500/60 hover:bg-rose-500/10 hover:shadow-[0_0_15px_rgba(244,63,94,0.2)]"

@@ -15,6 +15,7 @@ import {
   Zap,
   Check,
   Trash2,
+  Menu,
 } from "lucide-react";
 
 export interface NotificationItem {
@@ -75,6 +76,7 @@ interface HeaderProps {
   userTitle?: string;
   onOpenProfile?: () => void;
   userAvatar?: string;
+  onToggleMobileMenu?: () => void;
 }
 
 export function Header({
@@ -84,6 +86,7 @@ export function Header({
   userTitle = "Flow Master",
   onOpenProfile,
   userAvatar = "🚀",
+  onToggleMobileMenu,
 }: HeaderProps) {
   const [greeting, setGreeting] = useState("Good Afternoon");
   const [currentDateStr, setCurrentDateStr] = useState("");
@@ -304,22 +307,31 @@ export function Header({
     .slice(0, 2);
 
   return (
-    <header className="sticky top-0 z-20 w-full px-6 py-4 bg-slate-950/80 backdrop-blur-xl border-b border-white/10 flex flex-wrap items-center justify-between gap-4">
-      {/* Left: Greeting Banner & Live Status */}
-      <div className="flex items-center gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white flex items-center gap-2">
-              {greeting}, {userName.split(" ")[0]}
-              <span className="inline-block animate-bounce text-amber-400">
+    <header className="sticky top-0 z-20 w-full px-3 sm:px-6 py-3 sm:py-4 bg-slate-950/80 backdrop-blur-xl border-b border-white/10 flex items-center justify-between gap-3 overflow-x-hidden">
+      {/* Left: Mobile Hamburger Toggle + Greeting Banner & Live Status */}
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+        <button
+          type="button"
+          onClick={onToggleMobileMenu}
+          aria-label="Open Navigation Menu"
+          className="md:hidden p-2 -ml-1 text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors flex-shrink-0 cursor-pointer"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <h1 className="text-base sm:text-xl md:text-2xl font-extrabold tracking-tight text-white flex items-center gap-1.5 sm:gap-2 truncate">
+              <span className="truncate">{greeting}, {userName.split(" ")[0]}</span>
+              <span className="inline-block animate-bounce text-amber-400 flex-shrink-0">
                 ⚡
               </span>
             </h1>
           </div>
-          <p className="text-xs text-slate-400 font-medium mt-0.5 flex items-center gap-2">
+          <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5 flex items-center gap-1.5 sm:gap-2 truncate">
             <span>{currentDateStr || "Thursday, Sep 24"}</span>
-            <span className="w-1 h-1 rounded-full bg-slate-600" />
-            <span className="text-emerald-400 font-medium">
+            <span className="w-1 h-1 rounded-full bg-slate-600 flex-shrink-0" />
+            <span className="text-emerald-400 font-medium truncate">
               Optimal Focus Window
             </span>
           </p>

@@ -28,6 +28,7 @@ import {
 import { PanicButton } from "@/components/PanicButton";
 import { PanicInterventionModal } from "@/components/PanicInterventionModal";
 import { FocusBlueprintModal, FocusBlueprintRecord } from "@/components/FocusBlueprintModal";
+import { isExtensionInstalled, ExtensionRequiredModal } from "@/components/InstallExtensionBanner";
 import { handleSessionCompletedStreakUpdate } from "@/lib/streak-service";
 
 export type TimerMode = "focus" | "shortBreak" | "longBreak";
@@ -353,8 +354,18 @@ export function PomodoroTimer({
   // Focus Blueprint pre-session setup modal state
   const [showBlueprintModal, setShowBlueprintModal] = useState<boolean>(false);
   const [prefilledBlueprint, setPrefilledBlueprint] = useState<FocusBlueprintRecord | null>(null);
+  const [showExtensionRequiredModal, setShowExtensionRequiredModal] = useState<boolean>(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const successToastTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Listen for external extension required trigger
+  useEffect(() => {
+    const handleReq = () => setShowExtensionRequiredModal(true);
+    window.addEventListener("flowstate_show_extension_required", handleReq);
+    return () => {
+      window.removeEventListener("flowstate_show_extension_required", handleReq);
+    };
+  }, []);
 
   // Listen for reuse blueprint event from RecentBlueprints or dashboard
   useEffect(() => {
@@ -785,6 +796,15 @@ export function PomodoroTimer({
         timeLeft < modeDurations[currentMode] &&
         localStorage.getItem(STORAGE_KEY_REMAINING) !== null;
 
+      // CRITICAL BLOCKING CHECK: Extension required to start/resume focus sessions
+      if (currentMode === "focus" && !isExtensionInstalled()) {
+        setShowExtensionRequiredModal(true);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("flowstate_show_extension_required"));
+        }
+        return;
+      }
+
       // When starting a focus session anew:
       // The AI Agent 'Focus Blueprint' wizard should ONLY appear once per day — the first time the user starts a Focus Timer after 12:00 AM (midnight local time).
       if (currentMode === "focus" && !isPausedMidSession) {
@@ -842,6 +862,15 @@ export function PomodoroTimer({
   // Handle Focus Blueprint Confirmation from 3-Step Wizard
   const handleConfirmBlueprint = useCallback(
     (blueprint: FocusBlueprintRecord) => {
+      // CRITICAL BLOCKING CHECK: Extension required to start focus sessions
+      if (!isExtensionInstalled()) {
+        setShowExtensionRequiredModal(true);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("flowstate_show_extension_required"));
+        }
+        return;
+      }
+
       setShowBlueprintModal(false);
       setPrefilledBlueprint(null);
 
@@ -1361,7 +1390,7 @@ export function PomodoroTimer({
   return (
     <div
       ref={chamberRef}
-      className={`glass-card relative p-6 rounded-3xl border shadow-2xl flex flex-col justify-between h-full overflow-hidden group transition-all duration-500 ${
+      className={`glass-card relative p-4 sm:p-6 rounded-2xl sm:rounded-3xl border shadow-2xl flex flex-col justify-between h-full overflow-hidden group transition-all duration-500 ${
         timerActive && mode === "focus"
           ? "border-emerald-500/40 shadow-[0_0_35px_rgba(16,185,129,0.18)] ring-1 ring-emerald-500/30"
           : "border-white/10"
@@ -1374,10 +1403,10 @@ export function PomodoroTimer({
       />
 
       {/* Header Controls & Mode Switcher */}
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-white/[0.05] border border-white/10 text-emerald-400">
+            <div className="p-1.5 sm:p-2 rounded-xl bg-white/[0.05] border border-white/10 text-emerald-400">
               <Timer className="w-4 h-4" />
             </div>
             <div>
@@ -1524,13 +1553,13 @@ export function PomodoroTimer({
         </AnimatePresence>
 
         {/* Mode Selector Tabs */}
-        <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-slate-900/80 border border-white/10">
+        <div className="grid grid-cols-3 gap-1 sm:gap-1.5 p-1 rounded-xl sm:rounded-2xl bg-slate-900/80 border border-white/10">
           {(["focus", "shortBreak", "longBreak"] as TimerMode[]).map(
             (m) => (
               <button
                 key={m}
                 onClick={() => handleModeChange(m)}
-                className={`relative py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 ${
+                className={`relative py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-semibold transition-all duration-200 cursor-pointer ${
                   mode === m
                     ? "text-white shadow-md"
                     : "text-slate-400 hover:text-slate-200"
@@ -1539,7 +1568,7 @@ export function PomodoroTimer({
                 {mode === m && (
                   <motion.div
                     layoutId="timerModeIndicator"
-                    className="absolute inset-0 rounded-xl bg-white/10 border border-white/20 backdrop-blur-md shadow-[0_0_15px_rgba(255,255,255,0.05)]"
+                    className="absolute inset-0 rounded-lg sm:rounded-xl bg-white/10 border border-white/20 backdrop-blur-md shadow-[0_0_15px_rgba(255,255,255,0.05)]"
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
@@ -1953,6 +1982,16 @@ export function PomodoroTimer({
         prefilledBlueprint={prefilledBlueprint}
       />
 
+      {/* Extension Required Blocking Modal */}
+      <ExtensionRequiredModal
+        isOpen={showExtensionRequiredModal}
+        onClose={() => setShowExtensionRequiredModal(false)}
+        onSuccess={() => {
+          setShowExtensionRequiredModal(false);
+          toggleTimer();
+        }}
+      />
+
       {/* Blueprint Locked Success Toast */}
       <AnimatePresence>
         {successToast && (
@@ -1971,10 +2010,10 @@ export function PomodoroTimer({
       </AnimatePresence>
 
       {/* Main Timer Dial & Numerical Countdown */}
-      <div className="relative py-6 flex flex-col items-center justify-center">
-        <div className="relative w-48 h-48 flex items-center justify-center">
-          {/* Outer SVG Ring */}
-          <svg className="w-full h-full transform -rotate-90">
+      <div className="relative py-2 sm:py-4 md:py-6 flex flex-col items-center justify-center">
+        <div className="relative w-40 h-40 sm:w-48 sm:h-48 flex items-center justify-center">
+          {/* Outer SVG Ring with viewBox to scale cleanly */}
+          <svg viewBox="0 0 192 192" className="w-full h-full transform -rotate-90">
             <circle
               cx="96"
               cy="96"
@@ -2002,10 +2041,10 @@ export function PomodoroTimer({
 
           {/* Time Display inside Ring */}
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className="text-4xl sm:text-5xl font-black tracking-tight font-mono text-white drop-shadow-md">
+            <span className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight font-mono text-white drop-shadow-md">
               {timerTime}
             </span>
-            <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 mt-1 flex items-center gap-1">
+            <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 mt-0.5 sm:mt-1 flex items-center gap-1">
               {timerActive ? (
                 mode === "focus" ? (
                   <span className="text-emerald-400 flex items-center gap-1 font-bold">
@@ -2026,7 +2065,7 @@ export function PomodoroTimer({
         </div>
 
         {/* Session Indicators */}
-        <div className="flex items-center gap-2 mt-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 mt-1.5 sm:mt-2">
           {[1, 2, 3, 4].map((s) => (
             <div
               key={s}
@@ -2044,16 +2083,16 @@ export function PomodoroTimer({
       </div>
 
       {/* Timer Action Controls & Ambient Sound Select */}
-      <div className="space-y-4 pt-2">
+      <div className="space-y-3 sm:space-y-4 pt-1 sm:pt-2">
         {/* Play/Pause / Panic Button / Reset / Skip Action Buttons */}
-        <div className="flex items-center justify-center gap-3 sm:gap-4 flex-wrap">
+        <div className="flex items-center justify-center gap-2 sm:gap-4 flex-wrap">
           {/* Friction-based Panic Button replaces direct quit during Focus mode */}
           {mode === "focus" ? (
             <PanicButton onTrigger={handlePanicTrigger} />
           ) : (
             <button
               onClick={handleReset}
-              className="p-3 rounded-2xl bg-slate-900/80 border border-white/10 text-slate-400 hover:text-white hover:border-white/20 transition-all active:scale-95"
+              className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-slate-900/80 border border-white/10 text-slate-400 hover:text-white hover:border-white/20 transition-all active:scale-95 cursor-pointer"
               title="Reset Timer"
             >
               <RotateCcw className="w-4 h-4" />
@@ -2064,7 +2103,7 @@ export function PomodoroTimer({
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             onClick={toggleTimer}
-            className={`flex items-center justify-center gap-2 px-8 py-3 rounded-2xl font-extrabold text-sm text-slate-950 transition-all shadow-xl ${
+            className={`flex items-center justify-center gap-2 px-6 sm:px-8 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-extrabold text-xs sm:text-sm text-slate-950 transition-all shadow-xl cursor-pointer ${
               timerActive
                 ? "bg-gradient-to-r from-amber-400 to-amber-300 shadow-[0_0_20px_rgba(245,158,11,0.4)]"
                 : "bg-gradient-to-r from-emerald-400 to-teal-300 shadow-[0_0_25px_rgba(16,185,129,0.5)]"
@@ -2085,7 +2124,7 @@ export function PomodoroTimer({
 
           <button
             onClick={handleSkip}
-            className="p-3 rounded-2xl bg-slate-900/80 border border-white/10 text-slate-400 hover:text-white hover:border-white/20 transition-all active:scale-95"
+            className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-slate-900/80 border border-white/10 text-slate-400 hover:text-white hover:border-white/20 transition-all active:scale-95 cursor-pointer"
             title="Skip Session"
           >
             <SkipForward className="w-4 h-4" />

@@ -132,7 +132,10 @@ export function AIDisciplineCoach({
   };
 
   return (
-    <div className="relative rounded-2xl bg-gradient-to-br from-slate-900/90 via-slate-900/70 to-slate-950/90 border border-slate-800 shadow-xl overflow-hidden backdrop-blur-md">
+    <div className="relative rounded-2xl bg-gradient-to-br from-slate-900/95 via-slate-900/85 to-slate-950/95 border border-indigo-500/20 shadow-[0_12px_40px_rgba(0,0,0,0.5)] overflow-hidden backdrop-blur-xl hover:border-indigo-500/35 transition-colors duration-300">
+      {/* Ambient Glow Accent */}
+      <div className="absolute top-0 right-1/4 w-72 h-28 bg-indigo-500/10 blur-3xl pointer-events-none" />
+
       {/* Subtle top glowing bar based on status */}
       <div
         className={`h-1 w-full bg-gradient-to-r ${
@@ -144,11 +147,11 @@ export function AIDisciplineCoach({
         }`}
       />
 
-      <div className="p-5 sm:p-6 space-y-5">
+      <div className="p-4 sm:p-6 md:p-7 space-y-4 sm:space-y-6 relative z-10">
         {/* Header Row */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-inner">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-inner shrink-0">
               <Brain className="w-5 h-5 text-indigo-400" />
             </div>
             <div>
@@ -163,11 +166,11 @@ export function AIDisciplineCoach({
 
           {/* Action & Tone Controls */}
           <div className="flex items-center flex-wrap gap-2">
-            <div className="flex items-center bg-slate-950/80 p-1 rounded-xl border border-slate-800">
+            <div className="flex items-center bg-slate-950/80 p-1 rounded-xl border border-slate-800 flex-wrap">
               <button
                 type="button"
                 onClick={() => handleToneChange("reality-check")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                className={`px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-medium transition-all ${
                   tone === "reality-check"
                     ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm"
                     : "text-slate-400 hover:text-slate-200"
@@ -178,7 +181,7 @@ export function AIDisciplineCoach({
               <button
                 type="button"
                 onClick={() => handleToneChange("tactical")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                className={`px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-medium transition-all ${
                   tone === "tactical"
                     ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm"
                     : "text-slate-400 hover:text-slate-200"
@@ -189,7 +192,7 @@ export function AIDisciplineCoach({
               <button
                 type="button"
                 onClick={() => handleToneChange("stoic")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                className={`px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-medium transition-all ${
                   tone === "stoic"
                     ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
                     : "text-slate-400 hover:text-slate-200"
@@ -204,7 +207,7 @@ export function AIDisciplineCoach({
               onClick={() => loadAssessment()}
               disabled={loading}
               title="Refresh AI reality check"
-              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white border border-slate-700 transition-all disabled:opacity-50"
+              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white border border-slate-700 transition-all disabled:opacity-50 cursor-pointer"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-indigo-400" : ""}`} />
             </button>
@@ -212,7 +215,7 @@ export function AIDisciplineCoach({
         </div>
 
         {/* Live Metrics Accountability Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950/50 p-3.5 rounded-xl border border-slate-800/80">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 bg-slate-950/50 p-2.5 sm:p-3.5 rounded-xl border border-slate-800/80">
           <div>
             <div className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
               Focus vs Target
@@ -271,7 +274,7 @@ export function AIDisciplineCoach({
         </div>
 
         {/* AI Coaching Output Box */}
-        <div className="relative rounded-xl bg-slate-900/90 border border-slate-800 p-4 sm:p-5 space-y-4">
+        <div className="relative rounded-xl bg-slate-900/90 border border-slate-800 p-3.5 sm:p-5 space-y-3 sm:space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               {getVerdictBadge()}
@@ -287,7 +290,7 @@ export function AIDisciplineCoach({
               <button
                 type="button"
                 onClick={handleTestNotification}
-                className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 transition-all"
+                className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 transition-all cursor-pointer"
                 title="Test strategic evening streak protection notification"
               >
                 <Bell className="w-3 h-3 text-amber-400" />
@@ -298,7 +301,7 @@ export function AIDisciplineCoach({
                 <button
                   type="button"
                   onClick={onOpenStreakLossModal}
-                  className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-all"
+                  className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-all cursor-pointer"
                   title="View Broken Streak Psychological Recovery Intervention"
                 >
                   <Swords className="w-3 h-3 text-rose-400" />
@@ -317,10 +320,10 @@ export function AIDisciplineCoach({
               </div>
             ) : assessment ? (
               <>
-                <h4 className="text-base font-extrabold text-slate-100 tracking-tight">
+                <h4 className="text-sm sm:text-base font-extrabold text-slate-100 tracking-tight">
                   {assessment.headline}
                 </h4>
-                <p className="text-sm text-slate-300 leading-relaxed font-sans">
+                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans">
                   {assessment.coachingMessage}
                 </p>
 
@@ -339,7 +342,7 @@ export function AIDisciplineCoach({
                       <button
                         type="button"
                         onClick={onStartFocusSession}
-                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all shadow-md shrink-0 cursor-pointer"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all shadow-md shrink-0 cursor-pointer w-full sm:w-auto"
                       >
                         <Play className="w-3.5 h-3.5 fill-current" />
                         Execute 25m Block

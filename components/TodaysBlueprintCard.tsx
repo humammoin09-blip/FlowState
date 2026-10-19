@@ -127,21 +127,22 @@ export function TodaysBlueprintCard({ onEditBlueprint }: TodaysBlueprintCardProp
   }, [fetchTodaysBlueprint]);
 
   const handleEdit = () => {
-    if (!blueprint) {
+    if (blueprint && onEditBlueprint) {
+      onEditBlueprint(blueprint);
+    } else {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("flowstate_start_timer"));
       }
-      return;
-    }
-
-    if (onEditBlueprint) {
-      onEditBlueprint(blueprint);
-    } else if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("flowstate_reuse_blueprint", {
-          detail: blueprint,
-        })
-      );
+      if (onEditBlueprint) {
+        onEditBlueprint({
+          id: "new",
+          goal: "",
+          allowlist: [],
+          planned_work: "",
+          session_duration: 25,
+          created_at: new Date().toISOString(),
+        });
+      }
     }
   };
 
@@ -154,15 +155,15 @@ export function TodaysBlueprintCard({ onEditBlueprint }: TodaysBlueprintCardProp
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
-      className="relative rounded-2xl bg-gradient-to-r from-slate-900/90 via-slate-900/80 to-slate-950/90 border border-emerald-500/25 p-5 shadow-[0_10px_35px_rgba(0,0,0,0.5),0_0_20px_rgba(16,185,129,0.08)] backdrop-blur-xl overflow-hidden"
+      className="relative rounded-2xl bg-gradient-to-r from-slate-900/95 via-slate-900/85 to-slate-950/95 border border-emerald-500/25 p-4 sm:p-6 md:p-7 shadow-[0_12px_40px_rgba(0,0,0,0.5),0_0_24px_rgba(16,185,129,0.08)] backdrop-blur-xl overflow-hidden hover:border-emerald-500/40 transition-colors duration-300"
     >
       {/* Subtle Glow Accents */}
-      <div className="absolute top-0 right-1/4 w-52 h-20 bg-emerald-500/10 blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-10 right-10 w-40 h-20 bg-teal-500/10 blur-2xl pointer-events-none" />
+      <div className="absolute top-0 right-1/4 w-60 h-24 bg-emerald-500/10 blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-10 right-10 w-48 h-24 bg-teal-500/10 blur-2xl pointer-events-none" />
 
-      <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-5">
         {/* Left Section: Icon, Badge, Goal & Allowed Domains */}
-        <div className="space-y-2 flex-1 min-w-0">
+        <div className="space-y-3 flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-[11px] font-extrabold uppercase tracking-wider shadow-[0_0_12px_rgba(16,185,129,0.2)]">
               <Sparkles className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
@@ -226,11 +227,11 @@ export function TodaysBlueprintCard({ onEditBlueprint }: TodaysBlueprintCardProp
         </div>
 
         {/* Right Section: Action Button */}
-        <div className="flex items-center gap-2 self-start md:self-center shrink-0 pt-1 md:pt-0">
+        <div className="flex items-center gap-2 self-start md:self-center shrink-0 pt-1 md:pt-0 w-full sm:w-auto">
           <button
             type="button"
             onClick={handleEdit}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 hover:border-emerald-500/60 transition-all shadow-sm active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 hover:border-emerald-500/60 transition-all shadow-sm active:scale-95 cursor-pointer w-full sm:w-auto"
             title={blueprint ? "Edit Today's Blueprint" : "Set Today's Blueprint"}
           >
             <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
