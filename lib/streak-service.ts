@@ -19,6 +19,7 @@ export interface UserStreakData {
   canUseStreakSaver: boolean;
   previousStreak: number;
   streakSaverCooldownDays: number;
+  createdAt?: string | null;
 }
 
 export interface UserSettingsRow {
@@ -352,6 +353,7 @@ export async function fetchUserSettingsFromDB(userId?: string): Promise<Partial<
         lastBreakDate: data.last_break_date || localData.lastBreakDate || null,
         lastStreakSaverUsed: data.last_streak_saver_used || localData.lastStreakSaverUsed || null,
         previousStreak: localData.previousStreak ?? (data.current_streak || 1),
+        createdAt: data.created_at || null,
       };
     }
   } catch (err) {

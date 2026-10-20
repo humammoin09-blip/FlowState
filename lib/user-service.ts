@@ -20,8 +20,16 @@ export function getOrCreateGuestId(): string {
   if (typeof window === "undefined") return "guest_default";
   let guestId = localStorage.getItem(GUEST_ID_KEY);
   if (!guestId) {
+    const nowIso = new Date().toISOString();
     guestId = `guest_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     localStorage.setItem(GUEST_ID_KEY, guestId);
+    localStorage.setItem(`flowstate_account_created_at_${guestId}`, nowIso);
+    localStorage.setItem("flowstate_account_created_at", nowIso);
+  } else if (!localStorage.getItem(`flowstate_account_created_at_${guestId}`)) {
+    const parts = guestId.split("_");
+    const ts = parseInt(parts[1], 10);
+    const dateStr = !isNaN(ts) && ts > 0 ? new Date(ts).toISOString() : new Date().toISOString();
+    localStorage.setItem(`flowstate_account_created_at_${guestId}`, dateStr);
   }
   return guestId;
 }
@@ -59,6 +67,9 @@ export async function resolveActiveUserProfile(): Promise<UserProfile> {
     const userId = authUser.id;
     if (typeof window !== "undefined") {
       localStorage.setItem(USER_ID_KEY, userId);
+      if (authUser.created_at) {
+        localStorage.setItem(`flowstate_account_created_at_${userId}`, authUser.created_at);
+      }
     }
 
     const emailName = authUser.email ? authUser.email.split("@")[0] : "";

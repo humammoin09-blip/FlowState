@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BarChart3,
@@ -12,10 +12,8 @@ import {
   Target,
   Award,
   Flame,
-  Download,
   FileSpreadsheet,
   Check,
-  AlertCircle,
   WifiOff,
   ShieldAlert,
   AlertOctagon,
@@ -88,11 +86,7 @@ export function ConsistencyHeatmap() {
 
   const [matrixData, setMatrixData] = useState<MatrixCell[]>([]);
 
-  useEffect(() => {
-    fetchRealAnalytics();
-  }, []);
-
-  const fetchRealAnalytics = async () => {
+  const fetchRealAnalytics = useCallback(async () => {
     try {
       setLoading(true);
       setIsOfflineFallback(false);
@@ -131,6 +125,95 @@ export function ConsistencyHeatmap() {
         }
       }
 
+      // 2. Fetch User Settings & calculate streak
+      const userSettings = await fetchUserSettingsFromDB(activeUid);
+      const streakState = calculateStreakState({
+        sessions: (sessions || []) as FocusSessionRecord[],
+        storedData: userSettings,
+      });
+
+      setActiveStreak(streakState.currentStreak);
+      setMaxStreak(streakState.maxStreak);
+      setIsStreakBroken(streakState.isStreakBroken);
+      setDaysSinceLastBreak(streakState.daysSinceLastBreak);
+
+      // 3. Map focus session minutes by date & find valid session timestamps
+      const sessionMinutesByDate: Record<string, number> = {};
+      const validSessionTimestamps: number[] = [];
+
+      if (sessions && sessions.length > 0) {
+        sessions.forEach((s) => {
+          if (!s.created_at) return;
+          let rawTimestamp = s.created_at;
+          if (typeof rawTimestamp === "string" && !rawTimestamp.includes("Z") && !rawTimestamp.includes("+")) {
+            rawTimestamp = rawTimestamp.replace(" ", "T") + "Z";
+          }
+          const d = new Date(rawTimestamp);
+          const t = d.getTime();
+          if (isNaN(t)) return;
+          validSessionTimestamps.push(t);
+
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, "0");
+          const date = String(d.getDate()).padStart(2, "0");
+          const key = `${y}-${m}-${date}`;
+          sessionMinutesByDate[key] = (sessionMinutesByDate[key] || 0) + (s.duration_minutes || 25);
+        });
+      }
+
+      // Check if user has had at least 1 active focus day
+      const activeDaysCount = Object.keys(sessionMinutesByDate).filter(
+        (key) => sessionMinutesByDate[key] > 0
+      ).length;
+      const hasActiveDay = activeDaysCount > 0;
+
+      // Determine user's account creation date or first session date
+      let accountCreatedAtTime: number | null = null;
+      if (authData?.user?.created_at) {
+        const t = new Date(authData.user.created_at).getTime();
+        if (!isNaN(t)) accountCreatedAtTime = t;
+      }
+      if (!accountCreatedAtTime && userSettings?.createdAt) {
+        const t = new Date(userSettings.createdAt).getTime();
+        if (!isNaN(t)) accountCreatedAtTime = t;
+      }
+      if (!accountCreatedAtTime && typeof window !== "undefined") {
+        const stored =
+          localStorage.getItem(`flowstate_account_created_at_${activeUid}`) ||
+          localStorage.getItem("flowstate_account_created_at");
+        if (stored) {
+          const t = new Date(stored).getTime();
+          if (!isNaN(t)) accountCreatedAtTime = t;
+        }
+      }
+      if (!accountCreatedAtTime && activeUid.startsWith("guest_")) {
+        const parts = activeUid.split("_");
+        const ts = parseInt(parts[1], 10);
+        if (!isNaN(ts) && ts > 0) accountCreatedAtTime = ts;
+      }
+      if (!accountCreatedAtTime && typeof window !== "undefined") {
+        accountCreatedAtTime = Date.now();
+        localStorage.setItem(
+          `flowstate_account_created_at_${activeUid}`,
+          new Date(accountCreatedAtTime).toISOString()
+        );
+      }
+
+      const firstSessionTime =
+        validSessionTimestamps.length > 0 ? Math.min(...validSessionTimestamps) : null;
+
+      // Effective start date anchor: use earliest of account creation or first session date
+      let effectiveStartTime = accountCreatedAtTime || firstSessionTime || Date.now();
+      if (accountCreatedAtTime && firstSessionTime) {
+        effectiveStartTime = Math.min(accountCreatedAtTime, firstSessionTime);
+      }
+
+      const effectiveStartDate = new Date(effectiveStartTime);
+      const startY = effectiveStartDate.getFullYear();
+      const startM = String(effectiveStartDate.getMonth() + 1).padStart(2, "0");
+      const startD = String(effectiveStartDate.getDate()).padStart(2, "0");
+      const userStartDateStr = `${startY}-${startM}-${startD}`;
+
       // Unified calculation matching app/page.tsx and AIDisciplineCoach
       const analytics = calculateConsistencyAnalytics(sessions || []);
       const currentWeekMins = Object.values(analytics.dayMap).reduce((sum, d) => sum + d.mins, 0);
@@ -139,6 +222,9 @@ export function ConsistencyHeatmap() {
 
       const now = new Date();
       const todayDayIndex = (now.getDay() + 6) % 7; // Mon = 0, ..., Sun = 6
+      const diffToMonday = todayDayIndex;
+      const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday);
+
       const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
       const updatedDays = weekDays.map((d, idx) => {
         const hrs = Number((analytics.dayMap[d].mins / 60).toFixed(1));
@@ -150,7 +236,17 @@ export function ConsistencyHeatmap() {
 
         const isPast = idx < todayDayIndex;
         const isToday = idx === todayDayIndex;
-        const isMissed = isPast && hrs === 0;
+
+        const dayDate = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + idx);
+        const dayY = dayDate.getFullYear();
+        const dayM = String(dayDate.getMonth() + 1).padStart(2, "0");
+        const dayD = String(dayDate.getDate()).padStart(2, "0");
+        const dayDateKey = `${dayY}-${dayM}-${dayD}`;
+
+        // Only mark missed if user has at least 1 active day, day is in the past, hrs is 0,
+        // and day is on or after user's account creation date / first session date
+        const isBeforeUserStart = dayDateKey < userStartDateStr;
+        const isMissed = hasActiveDay && isPast && hrs === 0 && !isBeforeUserStart;
 
         return {
           day: d,
@@ -169,19 +265,7 @@ export function ConsistencyHeatmap() {
       const calculatedScore = Math.min(100, Math.round((calculatedHours / weeklyTarget) * 100));
       setConsistencyScore(calculatedScore > 0 ? calculatedScore : 0);
 
-      // Active Streak & Streak History Calculation
-      const userSettings = await fetchUserSettingsFromDB(activeUid);
-      const streakState = calculateStreakState({
-        sessions: (sessions || []) as FocusSessionRecord[],
-        storedData: userSettings,
-      });
-
-      setActiveStreak(streakState.currentStreak);
-      setMaxStreak(streakState.maxStreak);
-      setIsStreakBroken(streakState.isStreakBroken);
-      setDaysSinceLastBreak(streakState.daysSinceLastBreak);
-
-      // 2. Fetch Tasks / MITs with safe fallback
+      // 4. Fetch Tasks / MITs with safe fallback
       let tasksData: Array<{ completed?: boolean; duration?: string }> | null = null;
       try {
         const { data, error } = await supabase.from("tasks").select("*");
@@ -214,25 +298,7 @@ export function ConsistencyHeatmap() {
         setCompletedMitsCount(completed);
       }
 
-      // 3. Generate 28-Day Matrix mapping actual daily sessions or immutable failure log for past days
-      const sessionMinutesByDate: Record<string, number> = {};
-      if (sessions && sessions.length > 0) {
-        sessions.forEach((s) => {
-          if (!s.created_at) return;
-          let rawTimestamp = s.created_at;
-          if (typeof rawTimestamp === "string" && !rawTimestamp.includes("Z") && !rawTimestamp.includes("+")) {
-            rawTimestamp = rawTimestamp.replace(" ", "T") + "Z";
-          }
-          const d = new Date(rawTimestamp);
-          if (isNaN(d.getTime())) return;
-          const y = d.getFullYear();
-          const m = String(d.getMonth() + 1).padStart(2, "0");
-          const date = String(d.getDate()).padStart(2, "0");
-          const key = `${y}-${m}-${date}`;
-          sessionMinutesByDate[key] = (sessionMinutesByDate[key] || 0) + (s.duration_minutes || 25);
-        });
-      }
-
+      // 5. Generate 28-Day Matrix mapping actual daily sessions or immutable failure log
       let matrixMissed = 0;
       const generatedMatrix: MatrixCell[] = Array.from({ length: 28 }, (_, i) => {
         // Day 28 = today (offset 0), Day 1 = 27 days ago (offset 27)
@@ -255,7 +321,14 @@ export function ConsistencyHeatmap() {
 
         const isPast = daysAgo > 0;
         const isToday = daysAgo === 0;
-        const isMissed = isPast && hrs === 0;
+
+        // A day is only missed if:
+        // 1. User has at least 1 active day (for new users, show 0 missed days until at least 1 active day)
+        // 2. The day is in the past
+        // 3. Focus hours are 0
+        // 4. The day is on or after the user's account creation date / first session date
+        const isBeforeUserStart = dateKey < userStartDateStr;
+        const isMissed = hasActiveDay && isPast && hrs === 0 && !isBeforeUserStart;
 
         if (isMissed) matrixMissed++;
 
@@ -280,7 +353,12 @@ export function ConsistencyHeatmap() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchRealAnalytics();
+  }, [fetchRealAnalytics]);
 
   // Weekly Productivity Summary & CSV Export
   const handleExportWeeklyReport = () => {
@@ -296,7 +374,7 @@ export function ConsistencyHeatmap() {
       csvContent += `Weekly Consistency Score,${consistencyScore}%\n`;
       csvContent += `Completed MITs,${completedMitsCount} / ${totalMitsCount}\n`;
       csvContent += `Active Streak,${activeStreak} Days\n`;
-      csvContent += `Immutable Ledger Missed Days (28-day window),${missedDaysCount}\n\n`;
+      csvContent += `Immutable Ledger Missed Days,${missedDaysCount}\n\n`;
 
       csvContent += `Day,Focus Hours,Sessions Logged,Status,Intensity Level\n`;
       daysData.forEach((d) => {
@@ -409,10 +487,18 @@ export function ConsistencyHeatmap() {
           </button>
 
           <div
-            className="flex items-center gap-2 bg-rose-950/40 border border-rose-500/30 px-3.5 py-2 rounded-xl text-xs text-rose-300"
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs transition-colors ${
+              missedDaysCount === 0
+                ? "bg-emerald-950/40 border border-emerald-500/30 text-emerald-300"
+                : "bg-rose-950/40 border border-rose-500/30 text-rose-300"
+            }`}
             title="The Immutable Consistency Ledger permanently records missed days with zero focus"
           >
-            <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+            {missedDaysCount === 0 ? (
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
             <span>
               Immutable Ledger: <strong>{missedDaysCount}</strong> Missed Day{missedDaysCount === 1 ? "" : "s"}
             </span>
@@ -801,13 +887,31 @@ export function ConsistencyHeatmap() {
         {/* Insights Banner */}
         <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2 text-slate-300">
-            <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+            {missedDaysCount === 0 ? (
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
             <span>
-              <strong>Immutable Consistency Ledger:</strong> {missedDaysCount} missed day{missedDaysCount === 1 ? "" : "s"} permanently recorded in the 28-day window. Zero-hour days cannot be hidden or forgiven.
+              <strong>Immutable Consistency Ledger:</strong>{" "}
+              {missedDaysCount === 0
+                ? "0 missed days recorded. Clean slate preserved since joining."
+                : `${missedDaysCount} missed day${missedDaysCount === 1 ? "" : "s"} permanently recorded. Zero-hour days cannot be hidden or forgiven.`}
             </span>
           </div>
-          <span className="text-[11px] font-bold text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-lg border border-rose-500/20 flex items-center gap-1">
-            <AlertOctagon className="w-3 h-3" /> Permanent Ledger
+          <span
+            className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-colors ${
+              missedDaysCount === 0
+                ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                : "text-rose-400 bg-rose-500/10 border-rose-500/20"
+            }`}
+          >
+            {missedDaysCount === 0 ? (
+              <ShieldCheck className="w-3 h-3 text-emerald-400" />
+            ) : (
+              <AlertOctagon className="w-3 h-3 text-rose-400" />
+            )}
+            <span>{missedDaysCount === 0 ? "Clean Slate" : "Permanent Ledger"}</span>
           </span>
         </div>
       </div>
