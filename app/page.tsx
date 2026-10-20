@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sidebar, NavTab } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
@@ -18,6 +18,7 @@ import {
   isExtensionInstalled,
   ExtensionRequiredModal,
 } from "@/components/InstallExtensionBanner";
+import { WelcomeModal, STORAGE_KEY_WELCOME_SEEN } from "@/components/WelcomeModal";
 import { evaluateStreakStatus, calculateConsistencyAnalytics } from "@/lib/discipline-service";
 import { checkAndSendEveningStreakAlert } from "@/lib/streak-protection";
 import {
@@ -59,7 +60,40 @@ export default function FlowStateDashboard() {
   const [userAvatar, setUserAvatar] = useState<string>("");
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [extensionRequiredModalOpen, setExtensionRequiredModalOpen] = useState<boolean>(false);
+  const [welcomeForceState, setWelcomeForceState] = useState<boolean | null>(null);
+  const isWelcomeDismissed = useSyncExternalStore(
+    (callback) => {
+      window.addEventListener("storage", callback);
+      return () => window.removeEventListener("storage", callback);
+    },
+    () => (typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY_WELCOME_SEEN) === "true" : true),
+    () => true
+  );
+  const welcomeModalOpen = welcomeForceState ?? !isWelcomeDismissed;
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+
+  // Global listener to re-trigger Welcome modal on demand
+  useEffect(() => {
+    const handleOpenWelcome = () => setWelcomeForceState(true);
+    window.addEventListener("flowstate_open_welcome_modal", handleOpenWelcome);
+    return () => {
+      window.removeEventListener("flowstate_open_welcome_modal", handleOpenWelcome);
+    };
+  }, []);
+
+  const handleOpenBlueprintFromWelcome = () => {
+    setActiveTab("timer");
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("flowstate_auto_open_blueprint", "true");
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("flowstate_open_blueprint"));
+      }, 150);
+    }
+  };
+
+  const handleGoToFocusTimerFromWelcome = () => {
+    setActiveTab("timer");
+  };
 
   // Listen for global extension required events
   useEffect(() => {
@@ -734,6 +768,14 @@ export default function FlowStateDashboard() {
             }, 100);
           }
         }}
+      />
+
+      {/* Welcome Onboarding Modal (First visit only, tracked in localStorage) */}
+      <WelcomeModal
+        isOpen={welcomeModalOpen}
+        onClose={() => setWelcomeForceState(false)}
+        onOpenBlueprint={handleOpenBlueprintFromWelcome}
+        onGoToFocusTimer={handleGoToFocusTimerFromWelcome}
       />
     </div>
   );

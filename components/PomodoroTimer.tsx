@@ -368,8 +368,15 @@ export function PomodoroTimer({
     };
   }, []);
 
-  // Listen for reuse blueprint event from RecentBlueprints or dashboard
+  // Listen for reuse or open blueprint event from Welcome modal, RecentBlueprints, or dashboard
   useEffect(() => {
+    // Check if auto-open was requested prior to mount (e.g. from Welcome modal tab transition)
+    if (typeof window !== "undefined" && sessionStorage.getItem("flowstate_auto_open_blueprint") === "true") {
+      sessionStorage.removeItem("flowstate_auto_open_blueprint");
+      setPrefilledBlueprint(null);
+      setShowBlueprintModal(true);
+    }
+
     const handleReuseBlueprint = (e: Event) => {
       const customEvent = e as CustomEvent<FocusBlueprintRecord>;
       if (customEvent.detail) {
@@ -378,9 +385,16 @@ export function PomodoroTimer({
       }
     };
 
+    const handleOpenBlueprint = () => {
+      setPrefilledBlueprint(null);
+      setShowBlueprintModal(true);
+    };
+
     window.addEventListener("flowstate_reuse_blueprint", handleReuseBlueprint);
+    window.addEventListener("flowstate_open_blueprint", handleOpenBlueprint);
     return () => {
       window.removeEventListener("flowstate_reuse_blueprint", handleReuseBlueprint);
+      window.removeEventListener("flowstate_open_blueprint", handleOpenBlueprint);
     };
   }, []);
 

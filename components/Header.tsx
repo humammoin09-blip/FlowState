@@ -17,6 +17,7 @@ import {
   Trash2,
   Menu,
   User,
+  HelpCircle,
 } from "lucide-react";
 import { calculateUserXP, calculateUserLevel } from "@/lib/user-service";
 
@@ -363,6 +364,20 @@ export function Header({
           </kbd>
         </div>
 
+        {/* Welcome Guide / Onboarding Trigger */}
+        <button
+          onClick={() => {
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new CustomEvent("flowstate_open_welcome_modal"));
+            }
+          }}
+          className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-slate-900/80 border border-white/10 text-slate-300 hover:text-white hover:border-emerald-500/40 hover:text-emerald-400 transition-all cursor-pointer"
+          aria-label="Welcome Guide"
+          title="Open Welcome Guide"
+        >
+          <HelpCircle className="w-4 h-4" />
+        </button>
+
         {/* Notification Bell Dropdown */}
         <div className="relative">
           <button
@@ -434,6 +449,12 @@ export function Header({
                               item.id === n.id ? { ...item, read: true } : item
                             );
                             saveNotifications(updated);
+                          }
+                          if (String(n.title).toLowerCase().includes("welcome to flowstate")) {
+                            if (typeof window !== "undefined") {
+                              window.dispatchEvent(new CustomEvent("flowstate_open_welcome_modal"));
+                            }
+                            setShowNotifications(false);
                           }
                         }}
                         className={`flex items-start gap-2.5 p-2 rounded-xl transition-all text-left cursor-pointer ${
