@@ -29,6 +29,7 @@ import { PanicButton } from "@/components/PanicButton";
 import { PanicInterventionModal } from "@/components/PanicInterventionModal";
 import { FocusBlueprintModal, FocusBlueprintRecord } from "@/components/FocusBlueprintModal";
 import { isExtensionInstalled, ExtensionRequiredModal } from "@/components/InstallExtensionBanner";
+import { SessionCompleteCelebration } from "@/components/SessionCompleteCelebration";
 import { handleSessionCompletedStreakUpdate } from "@/lib/streak-service";
 import { encodeSessionMode } from "@/lib/user-service";
 
@@ -78,6 +79,7 @@ const STORAGE_KEY_ALLOWED_DOMAINS = "flowstate_pomodoro_allowed_domains";
 const STORAGE_KEY_BLOCKED_PATHS = "flowstate_pomodoro_blocked_paths";
 const STORAGE_KEY_WARNING_STATE = "flowstate_pomodoro_warning_state";
 const STORAGE_KEY_GRACE_PERIOD = "flowstate_pomodoro_grace_period_secs";
+const STORAGE_KEY_SESSION_START_TIME = "flowstate_session_start_time";
 
 export const DEFAULT_GRACE_PERIOD_SECS = 10;
 export const DEFAULT_ALLOWED_DOMAINS: string[] = ["localhost", "youtube.com"];
@@ -359,6 +361,27 @@ export function PomodoroTimer({
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const successToastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Session Complete Celebration state
+  const [showCelebration, setShowCelebration] = useState<boolean>(false);
+  const [celebrationDuration, setCelebrationDuration] = useState<number>(25);
+  const [celebrationStartTime, setCelebrationStartTime] = useState<number | null>(null);
+  const [celebrationEndTime, setCelebrationEndTime] = useState<number | null>(null);
+  const sessionStartTimeRef = useRef<number | null>(null);
+
+  // Listen for test or manual celebration trigger
+  useEffect(() => {
+    const handleTestCelebration = (e: Event) => {
+      const customEvt = e as CustomEvent<{ duration?: number }>;
+      const testDur = customEvt.detail?.duration ?? customFocusMins ?? 25;
+      setCelebrationDuration(testDur);
+      setShowCelebration(true);
+    };
+    window.addEventListener("flowstate_show_celebration", handleTestCelebration);
+    return () => {
+      window.removeEventListener("flowstate_show_celebration", handleTestCelebration);
+    };
+  }, [customFocusMins]);
+
   // Listen for external extension required trigger
   useEffect(() => {
     const handleReq = () => setShowExtensionRequiredModal(true);
@@ -563,7 +586,17 @@ export function PomodoroTimer({
         return next;
       });
 
-      const sessionMins = customFocusMins || 25;
+      const now = Date.now();
+      const startTimeVal =
+        sessionStartTimeRef.current ||
+        (typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY_SESSION_START_TIME)
+          ? Number(localStorage.getItem(STORAGE_KEY_SESSION_START_TIME))
+          : null);
+      const elapsedMins =
+        startTimeVal && now > startTimeVal ? Math.round((now - startTimeVal) / (60 * 1000)) : null;
+
+      // Dynamic calculation: use customFocusMins if set, or elapsed duration, fallback to 25
+      const sessionMins = customFocusMins || (elapsedMins && elapsedMins > 0 ? elapsedMins : 25);
       const newSessionRecord = {
         duration_minutes: sessionMins,
         mode: "focus",
@@ -573,6 +606,8 @@ export function PomodoroTimer({
       // Always cache in localStorage for robust offline persistence
       if (typeof window !== "undefined") {
         try {
+          localStorage.setItem("flowstate_last_completed_session_duration", String(sessionMins));
+          localStorage.removeItem(STORAGE_KEY_SESSION_START_TIME);
           const activeUid = localStorage.getItem("flowstate_active_user_id") || "guest_default";
           const cacheKey = `flowstate_cached_focus_sessions_${activeUid}`;
           const cached = localStorage.getItem(cacheKey);
@@ -584,6 +619,12 @@ export function PomodoroTimer({
           // ignore cache error
         }
       }
+
+      // Trigger full-screen celebration modal with dynamic duration
+      setCelebrationDuration(sessionMins);
+      setCelebrationStartTime(startTimeVal || null);
+      setCelebrationEndTime(now);
+      setShowCelebration(true);
 
       (async () => {
         try {
@@ -874,6 +915,11 @@ export function PomodoroTimer({
       setTimerTime(formatTime(timeToUse));
 
       if (currentMode === "focus") {
+        const now = Date.now();
+        if (!isPausedMidSession || !sessionStartTimeRef.current) {
+          sessionStartTimeRef.current = now;
+          localStorage.setItem(STORAGE_KEY_SESSION_START_TIME, String(now));
+        }
         console.log('[FlowState] Broadcasting LOCKDOWN_START');
         const { allowlistDomains: currentAllowed, blockedPaths: currentBlocked } = getSavedAllowlistSettings();
         broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
@@ -931,6 +977,12 @@ export function PomodoroTimer({
       setTimerActive(true);
       setTimerTime(formatTime(timeToUse));
 
+      const now = Date.now();
+      sessionStartTimeRef.current = now;
+      if (typeof window !== "undefined") {
+        localStorage.setItem(STORAGE_KEY_SESSION_START_TIME, String(now));
+      }
+
       // 3. Broadcast FLOWSTATE_LOCKDOWN_START with the new allowlistDomains and blockedPaths
       console.log("[FlowState] Broadcasting LOCKDOWN_START with blueprint allowlist");
       broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
@@ -981,25 +1033,42 @@ export function PomodoroTimer({
   }, []);
 
   // State-protected mode change: prevents accidental resets while active
-  const applyModeChange = (newMode: TimerMode) => {
-    setMode(newMode);
-    const duration = modeDurations[newMode];
+  const applyModeChange = useCallback(
+    (newMode: TimerMode) => {
+      setMode(newMode);
+      const duration = modeDurations[newMode];
 
-    if (newMode !== "focus") {
-      console.log('[FlowState] Broadcasting LOCKDOWN_END');
-      broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_END");
-    }
+      if (newMode !== "focus") {
+        console.log('[FlowState] Broadcasting LOCKDOWN_END');
+        broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_END");
+      }
 
-    localStorage.setItem(STORAGE_KEY_MODE, newMode);
-    localStorage.setItem(STORAGE_KEY_RUNNING, "false");
-    localStorage.removeItem(STORAGE_KEY_TARGET_END_TIME);
-    localStorage.setItem(STORAGE_KEY_REMAINING, String(duration));
+      localStorage.setItem(STORAGE_KEY_MODE, newMode);
+      localStorage.setItem(STORAGE_KEY_RUNNING, "false");
+      localStorage.removeItem(STORAGE_KEY_TARGET_END_TIME);
+      localStorage.setItem(STORAGE_KEY_REMAINING, String(duration));
 
-    setTimeLeft(duration);
-    setTimerActive(false);
-    setTimerTime(formatTime(duration));
-    setPendingModeSwitch(null);
-  };
+      setTimeLeft(duration);
+      setTimerActive(false);
+      setTimerTime(formatTime(duration));
+      setPendingModeSwitch(null);
+    },
+    [formatTime, modeDurations, setTimerActive, setTimerTime]
+  );
+
+  // Celebration Action: 'Start Another Session' (resets timer to focus mode)
+  const handleStartAnotherSession = useCallback(() => {
+    setShowCelebration(false);
+    applyModeChange("focus");
+  }, [applyModeChange]);
+
+  // Celebration Action: 'Take a Break' (switches to break mode)
+  const handleTakeBreak = useCallback(() => {
+    setShowCelebration(false);
+    const breakMode: TimerMode =
+      completedSessions % 4 === 0 && completedSessions > 0 ? "longBreak" : "shortBreak";
+    applyModeChange(breakMode);
+  }, [completedSessions, applyModeChange]);
 
   const handleModeChange = (newMode: TimerMode) => {
     if (newMode === mode) return;
@@ -1082,6 +1151,13 @@ export function PomodoroTimer({
     setTimerTime(formatTime(timeToUse));
 
     if (mode === "focus") {
+      const now = Date.now();
+      if (!sessionStartTimeRef.current) {
+        sessionStartTimeRef.current = now;
+        if (typeof window !== "undefined") {
+          localStorage.setItem(STORAGE_KEY_SESSION_START_TIME, String(now));
+        }
+      }
       console.log('[FlowState] Broadcasting LOCKDOWN_START');
       const { allowlistDomains: currentAllowed, blockedPaths: currentBlocked } = getSavedAllowlistSettings();
       broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_START", {
@@ -2022,6 +2098,17 @@ export function PomodoroTimer({
           setShowExtensionRequiredModal(false);
           toggleTimer();
         }}
+      />
+
+      {/* Full-Screen Session Complete Celebration Modal */}
+      <SessionCompleteCelebration
+        isOpen={showCelebration}
+        durationMinutes={celebrationDuration}
+        startTime={celebrationStartTime}
+        endTime={celebrationEndTime}
+        onStartAnother={handleStartAnotherSession}
+        onTakeBreak={handleTakeBreak}
+        onClose={() => setShowCelebration(false)}
       />
 
       {/* Blueprint Locked Success Toast */}
