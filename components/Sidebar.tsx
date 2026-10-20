@@ -1,23 +1,19 @@
 "use client";
 
 import SoundscapePlayer from "./SoundscapePlayer";
-import React, { useState } from "react";
+import React, { useState, useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { isExtensionInstalled } from "./InstallExtensionBanner";
 import {
   LayoutDashboard,
   Timer,
   CheckSquare,
   BarChart3,
-  Settings,
   Sparkles,
   ChevronLeft,
   ChevronRight,
-  Headphones,
   Zap,
-  Flame,
-  UserCheck,
   X,
-  Menu,
   User,
 } from "lucide-react";
 
@@ -36,6 +32,18 @@ interface SidebarProps {
   onCloseMobile?: () => void;
 }
 
+const extensionSubscribe = (callback: () => void) => {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("storage", callback);
+  window.addEventListener("message", callback);
+  const interval = setInterval(callback, 3000);
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener("message", callback);
+    clearInterval(interval);
+  };
+};
+
 export function Sidebar({
   activeTab,
   setActiveTab,
@@ -49,6 +57,18 @@ export function Sidebar({
   onCloseMobile,
 }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const isExtensionActive = useSyncExternalStore(
+    extensionSubscribe,
+    () => isExtensionInstalled(),
+    () => false
+  );
+
+  const handleExtensionIndicatorClick = () => {
+    if (!isExtensionActive && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("flowstate_show_extension_required"));
+    }
+  };
 
   const navItems = [
     {
@@ -239,6 +259,47 @@ export function Sidebar({
             </motion.div>
           )}
         </div>
+
+        {/* Extension Blocker Status Indicator */}
+        <div
+          onClick={handleExtensionIndicatorClick}
+          className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-xs transition-all ${
+            isExtensionActive
+              ? "bg-emerald-950/25 border-emerald-500/20 text-emerald-300"
+              : "bg-rose-950/25 border-rose-500/25 text-rose-300 hover:bg-rose-950/40 hover:border-rose-500/40 cursor-pointer"
+          } ${isCollapsed ? "justify-center px-1.5" : "justify-between"}`}
+          title={
+            isExtensionActive
+              ? "FlowState Blocker is active and protecting your sessions"
+              : "FlowState Blocker is inactive. Click to install the extension."
+          }
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="relative flex h-2 w-2 shrink-0">
+              {isExtensionActive ? (
+                <>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-[0_0_8px_#10b981]" />
+                </>
+              ) : (
+                <>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500 shadow-[0_0_8px_#f43f5e]" />
+                </>
+              )}
+            </span>
+            {!isCollapsed && (
+              <span className="text-[11px] font-semibold tracking-tight truncate">
+                {isExtensionActive ? "Blocker Active" : "Blocker Inactive"}
+              </span>
+            )}
+          </div>
+          {!isCollapsed && !isExtensionActive && (
+            <span className="text-[9px] font-bold text-rose-400 bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 rounded ml-1 shrink-0">
+              Install
+            </span>
+          )}
+        </div>
       </div>
     </motion.aside>
 
@@ -350,6 +411,45 @@ export function Sidebar({
                     <Sparkles className="w-2.5 h-2.5 shrink-0" /> {userName === "Guest User" ? "New User" : userTitle}
                   </span>
                 </div>
+              </div>
+
+              {/* Extension Blocker Status Indicator */}
+              <div
+                onClick={handleExtensionIndicatorClick}
+                className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl border text-xs transition-all ${
+                  isExtensionActive
+                    ? "bg-emerald-950/25 border-emerald-500/20 text-emerald-300"
+                    : "bg-rose-950/25 border-rose-500/25 text-rose-300 hover:bg-rose-950/40 hover:border-rose-500/40 cursor-pointer"
+                }`}
+                title={
+                  isExtensionActive
+                    ? "FlowState Blocker is active and protecting your sessions"
+                    : "FlowState Blocker is inactive. Click to install the extension."
+                }
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    {isExtensionActive ? (
+                      <>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-[0_0_8px_#10b981]" />
+                      </>
+                    ) : (
+                      <>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500 shadow-[0_0_8px_#f43f5e]" />
+                      </>
+                    )}
+                  </span>
+                  <span className="text-[11px] font-semibold tracking-tight truncate">
+                    {isExtensionActive ? "Blocker Active" : "Blocker Inactive"}
+                  </span>
+                </div>
+                {!isExtensionActive && (
+                  <span className="text-[9px] font-bold text-rose-400 bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 rounded shrink-0">
+                    Install
+                  </span>
+                )}
               </div>
             </div>
           </motion.aside>
