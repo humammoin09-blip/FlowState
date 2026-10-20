@@ -30,6 +30,12 @@ import {
 } from "@/lib/streak-service";
 import { Sparkles, Flame, Zap, Shield, ArrowRight, BarChart3, Timer, CheckSquare } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import {
+  resolveActiveUserProfile,
+  filterSessionsByUserId,
+  filterTasksByUserId,
+  decodeTaskDuration,
+} from "@/lib/user-service";
 
 export default function FlowStateDashboard() {
   const [activeTab, setActiveTab] = useState<NavTab>("dashboard");
@@ -46,11 +52,11 @@ export default function FlowStateDashboard() {
   const [streakLossModalOpen, setStreakLossModalOpen] = useState<boolean>(false);
   const [previousBrokenStreak, setPreviousBrokenStreak] = useState<number>(0);
 
-  // Profile Customization States
-  const [userName, setUserName] = useState<string>("Alex Vance");
-  const [userTitle, setUserTitle] = useState<string>("Flow Master");
+  // Profile Customization States (Clean defaults for new users)
+  const [userName, setUserName] = useState<string>("Guest User");
+  const [userTitle, setUserTitle] = useState<string>("New User");
   const [dailyGoal, setDailyGoal] = useState<number>(6);
-  const [userAvatar, setUserAvatar] = useState<string>("🚀");
+  const [userAvatar, setUserAvatar] = useState<string>("");
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [extensionRequiredModalOpen, setExtensionRequiredModalOpen] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
@@ -64,29 +70,31 @@ export default function FlowStateDashboard() {
     };
   }, []);
 
-  // Load profile from localStorage on mount
+  // Load profile from Supabase Auth or local user profile on mount
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const savedName = localStorage.getItem("flowstate_user_name");
-      const savedTitle = localStorage.getItem("flowstate_user_title");
-      const savedGoal = localStorage.getItem("flowstate_daily_goal");
-      const savedAvatar = localStorage.getItem("flowstate_user_avatar");
-      if (savedName) setUserName(savedName);
-      if (savedTitle) setUserTitle(savedTitle);
-      if (savedGoal) setDailyGoal(parseFloat(savedGoal));
-      if (savedAvatar) setUserAvatar(savedAvatar);
+    (async () => {
+      const profile = await resolveActiveUserProfile();
+      setUserName(profile.name);
+      setUserTitle(profile.title);
+      setUserAvatar(profile.avatar);
+      setDailyGoal(profile.dailyGoal);
 
-      const cachedSessions = localStorage.getItem("flowstate_cached_focus_sessions");
-      if (cachedSessions) {
-        try {
-          const parsed = JSON.parse(cachedSessions);
-          const analytics = calculateConsistencyAnalytics(parsed);
-          setFocusHours(analytics.todayHours);
-        } catch {
-          // ignore
+      if (typeof window !== "undefined") {
+        const cachedSessions =
+          localStorage.getItem(`flowstate_cached_focus_sessions_${profile.id}`) ||
+          localStorage.getItem("flowstate_cached_focus_sessions");
+        if (cachedSessions) {
+          try {
+            const parsed = JSON.parse(cachedSessions) as Array<{ duration_minutes?: number; created_at?: string; mode?: string | null }>;
+            const userFiltered = filterSessionsByUserId(parsed, profile.id);
+            const analytics = calculateConsistencyAnalytics(userFiltered);
+            setFocusHours(analytics.todayHours);
+          } catch {
+            // ignore
+          }
         }
       }
-    }
+    })();
   }, []);
 
   const [statsLoading, setStatsLoading] = useState<boolean>(true);
@@ -95,22 +103,27 @@ export default function FlowStateDashboard() {
   const fetchAnalyticsAndStreak = async () => {
     try {
       setStatsLoading(true);
+      const profile = await resolveActiveUserProfile();
+      const activeUid = profile.id;
+
       const { data: sessions, error } = await supabase
         .from("focus_sessions")
         .select("duration_minutes, created_at, mode");
 
       if (error) throw error;
 
-      const sessionList = sessions || [];
-      if (typeof window !== "undefined" && sessions) {
-        localStorage.setItem("flowstate_cached_focus_sessions", JSON.stringify(sessions));
+      // Filter sessions strictly belonging to the active user
+      const sessionList = filterSessionsByUserId(sessions || [], activeUid);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`flowstate_cached_focus_sessions_${activeUid}`, JSON.stringify(sessionList));
+        localStorage.setItem("flowstate_cached_focus_sessions", JSON.stringify(sessionList));
       }
 
       const analytics = calculateConsistencyAnalytics(sessionList);
       setFocusHours(analytics.todayHours);
 
-      // Compare lastActiveDate with today's date from Supabase / localStorage
-      const userSettings = await fetchUserSettingsFromDB();
+      // Compare lastActiveDate with today's date from Supabase / localStorage for active user
+      const userSettings = await fetchUserSettingsFromDB(activeUid);
       const streakState = calculateStreakState({
         sessions: sessionList as FocusSessionRecord[],
         storedData: userSettings,
@@ -126,7 +139,11 @@ export default function FlowStateDashboard() {
       if (streakState.isStreakBroken) {
         setPreviousBrokenStreak(streakState.previousStreak);
         const todayStr = getLocalDateString();
-        const dismissed = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEYS.MODAL_DISMISSED_DATE) : null;
+        const dismissed =
+          typeof window !== "undefined"
+            ? localStorage.getItem(`${STORAGE_KEYS.MODAL_DISMISSED_DATE}_${activeUid}`) ||
+              localStorage.getItem(STORAGE_KEYS.MODAL_DISMISSED_DATE)
+            : null;
         if (dismissed !== todayStr) {
           setStreakLossModalOpen(true);
         }
@@ -141,11 +158,14 @@ export default function FlowStateDashboard() {
     } catch (err) {
       console.warn("Notice: Focus sessions remote fetch failed, falling back to local cache:", err);
       if (typeof window !== "undefined") {
-        const cached = localStorage.getItem("flowstate_cached_focus_sessions");
+        const activeUid = localStorage.getItem("flowstate_active_user_id") || "guest_default";
+        const cached =
+          localStorage.getItem(`flowstate_cached_focus_sessions_${activeUid}`) ||
+          localStorage.getItem("flowstate_cached_focus_sessions");
         let parsed: FocusSessionRecord[] = [];
         if (cached) {
           try {
-            parsed = JSON.parse(cached);
+            parsed = filterSessionsByUserId(JSON.parse(cached) as FocusSessionRecord[], activeUid);
             const analytics = calculateConsistencyAnalytics(parsed);
             setFocusHours(analytics.todayHours);
           } catch {
@@ -153,7 +173,7 @@ export default function FlowStateDashboard() {
           }
         }
 
-        const userSettings = await fetchUserSettingsFromDB();
+        const userSettings = await fetchUserSettingsFromDB(activeUid);
         const streakState = calculateStreakState({
           sessions: parsed,
           storedData: userSettings,
@@ -168,7 +188,9 @@ export default function FlowStateDashboard() {
         if (streakState.isStreakBroken) {
           setPreviousBrokenStreak(streakState.previousStreak);
           const todayStr = getLocalDateString();
-          const dismissed = localStorage.getItem(STORAGE_KEYS.MODAL_DISMISSED_DATE);
+          const dismissed =
+            localStorage.getItem(`${STORAGE_KEYS.MODAL_DISMISSED_DATE}_${activeUid}`) ||
+            localStorage.getItem(STORAGE_KEYS.MODAL_DISMISSED_DATE);
           if (dismissed !== todayStr) {
             setStreakLossModalOpen(true);
           }
@@ -180,7 +202,8 @@ export default function FlowStateDashboard() {
   };
 
   const handleUseStreakSaver = async () => {
-    const result = await useStreakSaver();
+    const profile = await resolveActiveUserProfile();
+    const result = await useStreakSaver(new Date(), profile.id);
     if (result.success && result.data) {
       setStreakDays(result.data.currentStreak);
       setIsStreakBroken(false);
@@ -237,6 +260,9 @@ export default function FlowStateDashboard() {
 
   const fetchDashboardTasks = async () => {
     try {
+      const profile = await resolveActiveUserProfile();
+      const activeUid = profile.id;
+
       const { data, error } = await supabase
         .from("tasks")
         .select("*")
@@ -245,11 +271,14 @@ export default function FlowStateDashboard() {
       if (error) throw error;
 
       if (data) {
+        // Filter strictly to active user's tasks
+        const userTasks = filterTasksByUserId(data, activeUid);
         if (typeof window !== "undefined") {
-          localStorage.setItem("flowstate_cached_tasks", JSON.stringify(data));
+          localStorage.setItem(`flowstate_cached_tasks_${activeUid}`, JSON.stringify(userTasks));
+          localStorage.setItem("flowstate_cached_tasks", JSON.stringify(userTasks));
         }
 
-        const formattedTasks: Task[] = data.map((t) => {
+        const formattedTasks: Task[] = userTasks.map((t) => {
           const isCompletedSaved =
             typeof window !== "undefined" &&
             localStorage.getItem(`task_completed_${t.id}`) === "true";
@@ -272,13 +301,15 @@ export default function FlowStateDashboard() {
             }
             return {
               ...t,
+              duration: decodeTaskDuration(t.duration),
               completed: true,
               remainingSeconds: 0,
               remaining_seconds: 0,
             };
           }
 
-          const defaultMins = parseInt(t.duration || "5", 10) || 5;
+          const rawDuration = decodeTaskDuration(t.duration);
+          const defaultMins = parseInt(rawDuration || "5", 10) || 5;
 
           let remaining: number;
           if (savedTime !== null) {
@@ -296,6 +327,7 @@ export default function FlowStateDashboard() {
             }
             return {
               ...t,
+              duration: rawDuration,
               completed: true,
               remainingSeconds: 0,
               remaining_seconds: 0,
@@ -308,6 +340,7 @@ export default function FlowStateDashboard() {
 
           return {
             ...t,
+            duration: rawDuration,
             completed: false,
             remainingSeconds: isNaN(remaining) ? defaultMins * 60 : remaining,
           };
@@ -317,25 +350,32 @@ export default function FlowStateDashboard() {
     } catch (err) {
       console.warn("Notice: Tasks remote fetch failed, falling back to local cache:", err);
       if (typeof window !== "undefined") {
-        const cached = localStorage.getItem("flowstate_cached_tasks");
+        const activeUid = localStorage.getItem("flowstate_active_user_id") || "guest_default";
+        const cached =
+          localStorage.getItem(`flowstate_cached_tasks_${activeUid}`) ||
+          localStorage.getItem("flowstate_cached_tasks");
         if (cached) {
           try {
-            const parsed = JSON.parse(cached);
-            const normalized = parsed.map((t: Task) => {
+            const parsed = JSON.parse(cached) as Task[];
+            const userFiltered = filterTasksByUserId<Task>(parsed, activeUid);
+            const normalized = userFiltered.map((t: Task) => {
               const isCompletedSaved = localStorage.getItem(`task_completed_${t.id}`) === "true";
               const savedTime = localStorage.getItem(`task_timer_${t.id}`);
+              const rawDuration = decodeTaskDuration(t.duration);
               if (t.completed || t.remaining_seconds === 0 || isCompletedSaved || savedTime === "0") {
                 return {
                   ...t,
+                  duration: rawDuration,
                   completed: true,
                   remainingSeconds: 0,
                   remaining_seconds: 0,
                 };
               }
-              const defaultMins = parseInt(t.duration || "5", 10) || 5;
+              const defaultMins = parseInt(rawDuration || "5", 10) || 5;
               const rem = savedTime !== null ? parseInt(savedTime, 10) : (t.remainingSeconds ?? defaultMins * 60);
               return {
                 ...t,
+                duration: rawDuration,
                 completed: false,
                 remainingSeconds: isNaN(rem) ? defaultMins * 60 : rem,
               };
@@ -476,6 +516,8 @@ export default function FlowStateDashboard() {
           userName={userName}
           userTitle={userTitle}
           userAvatar={userAvatar}
+          focusHours={focusHours}
+          completedTasksCount={completedCount}
           onOpenProfile={() => setIsProfileOpen(true)}
           onToggleMobileMenu={() => setMobileMenuOpen((prev) => !prev)}
         />

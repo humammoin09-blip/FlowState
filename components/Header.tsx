@@ -16,7 +16,9 @@ import {
   Check,
   Trash2,
   Menu,
+  User,
 } from "lucide-react";
+import { calculateUserXP, calculateUserLevel } from "@/lib/user-service";
 
 export interface NotificationItem {
   id: string | number;
@@ -32,27 +34,11 @@ export const NOTIFICATION_EVENT = "flowstate_new_notification";
 
 const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
   {
-    id: "notif-1",
-    title: "14-Day Streak Unlocked! 🔥",
-    time: "10m ago",
-    timestamp: Date.now() - 10 * 60 * 1000,
+    id: "welcome-1",
+    title: "Welcome to FlowState! ⚡",
+    time: "Just now",
+    timestamp: Date.now(),
     read: false,
-    type: "system",
-  },
-  {
-    id: "notif-2",
-    title: "Pomodoro Session 2 Completed",
-    time: "45m ago",
-    timestamp: Date.now() - 45 * 60 * 1000,
-    read: true,
-    type: "pomodoro",
-  },
-  {
-    id: "notif-3",
-    title: "Weekly Consistency Report ready",
-    time: "2h ago",
-    timestamp: Date.now() - 2 * 60 * 60 * 1000,
-    read: true,
     type: "system",
   },
 ];
@@ -77,16 +63,20 @@ interface HeaderProps {
   onOpenProfile?: () => void;
   userAvatar?: string;
   onToggleMobileMenu?: () => void;
+  focusHours?: number;
+  completedTasksCount?: number;
 }
 
 export function Header({
   timerActive,
   timerTime,
-  userName = "Alex Vance",
-  userTitle = "Flow Master",
+  userName = "Guest User",
+  userTitle = "New User",
   onOpenProfile,
-  userAvatar = "🚀",
+  userAvatar = "",
   onToggleMobileMenu,
+  focusHours = 0,
+  completedTasksCount = 0,
 }: HeaderProps) {
   const [greeting, setGreeting] = useState("Good Afternoon");
   const [currentDateStr, setCurrentDateStr] = useState("");
@@ -298,13 +288,20 @@ export function Header({
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
+  // Dynamic XP & Level calculation
+  const currentXP = calculateUserXP(focusHours, completedTasksCount);
+  const currentLevel = calculateUserLevel(currentXP);
+  const isGuestOrNew = userName === "Guest User" || userName === "New User";
+
   // Get user initials for avatar fallback
-  const initials = userName
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+  const initials = isGuestOrNew
+    ? "GU"
+    : userName
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2);
 
   return (
     <header className="sticky top-0 z-20 w-full px-3 sm:px-6 py-3 sm:py-4 bg-slate-950/80 backdrop-blur-xl border-b border-white/10 flex items-center justify-between gap-3 overflow-x-hidden">
@@ -507,23 +504,25 @@ export function Header({
                   />
                 ) : userAvatar ? (
                   <span className="text-base">{userAvatar}</span>
+                ) : isGuestOrNew ? (
+                  <User className="w-4 h-4 text-slate-300" />
                 ) : (
                   initials
                 )}
               </div>
             </div>
             <span className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-950 border border-white/20 text-[8px] font-bold text-amber-400">
-              12
+              {currentLevel}
             </span>
           </div>
 
           <div className="hidden sm:flex flex-col">
             <span className="text-xs font-bold text-slate-100 flex items-center gap-1">
               {userName}
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              {!isGuestOrNew && <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />}
             </span>
             <span className="text-[10px] text-slate-400 font-mono">
-              {userTitle} • 4,820 XP
+              {userTitle} • {currentXP.toLocaleString()} XP
             </span>
           </div>
         </div>

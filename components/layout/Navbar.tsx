@@ -96,13 +96,13 @@ export function Navbar({ onMenuClick, onStartFocus }: NavbarProps) {
 
         <div className="flex items-center gap-2 rounded-2xl border border-white/8 bg-white/[0.04] py-1 pl-1 pr-3">
           <div className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 text-xs font-semibold text-zinc-950">
-            AK
+            GU
           </div>
           <div className="hidden sm:block">
-            <p className="text-xs font-medium text-zinc-100">Ava Kane</p>
+            <p className="text-xs font-medium text-zinc-100">Guest User</p>
             <p className="flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-emerald-300/80">
               <IconBolt className="h-3 w-3" />
-              Pro
+              New User
             </p>
           </div>
         </div>

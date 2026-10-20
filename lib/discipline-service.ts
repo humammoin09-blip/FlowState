@@ -120,7 +120,7 @@ import {
  * active day criteria and gap analysis.
  */
 export function calculateConsistencyAnalytics(
-  sessions: Array<{ duration_minutes?: number; created_at?: string; mode?: string }>
+  sessions: Array<{ duration_minutes?: number; created_at?: string; mode?: string | null }>
 ): {
   todayHours: number;
   todayMins: number;

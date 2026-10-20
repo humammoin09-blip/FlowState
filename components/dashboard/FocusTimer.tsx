@@ -191,8 +191,8 @@ export function FocusTimer({ startOnMount = false }: FocusTimerProps) {
   const minutesLeft = Math.max(1, Math.ceil(remaining / 60));
   const userName =
     typeof window !== "undefined"
-      ? localStorage.getItem("flowstate_user_name") || "Alex Vance"
-      : "Alex Vance";
+      ? localStorage.getItem("flowstate_user_name") || "Guest User"
+      : "Guest User";
 
   return (
     <>

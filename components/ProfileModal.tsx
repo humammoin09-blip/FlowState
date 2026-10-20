@@ -111,22 +111,37 @@ export function ProfileModal({
       if (setDailyGoalProp) setDailyGoalProp(dailyGoal);
       if (setUserAvatarProp) setUserAvatarProp(selectedAvatar);
 
-      localStorage.setItem("flowstate_user_name", name);
-      localStorage.setItem("flowstate_user_title", title);
-      localStorage.setItem("flowstate_daily_goal", dailyGoal);
-      localStorage.setItem("flowstate_user_avatar", selectedAvatar);
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUserId =
+        authData?.user?.id ||
+        (typeof window !== "undefined"
+          ? localStorage.getItem("flowstate_active_user_id") || "guest_default"
+          : "guest_default");
 
-      // Optional: Sync with Supabase profiles table if configured
-      await supabase.from("profiles").upsert({
-        id: "current_user", // or user id if auth is active
-        display_name: name,
-        professional_title: title,
-        daily_goal_hours: parseFloat(dailyGoal),
-        avatar: selectedAvatar,
-        updated_at: new Date(),
-      });
+      if (typeof window !== "undefined") {
+        localStorage.setItem("flowstate_user_name", name);
+        localStorage.setItem("flowstate_user_title", title);
+        localStorage.setItem("flowstate_daily_goal", dailyGoal);
+        localStorage.setItem("flowstate_user_avatar", selectedAvatar);
+
+        localStorage.setItem(`flowstate_name_${currentUserId}`, name);
+        localStorage.setItem(`flowstate_title_${currentUserId}`, title);
+        localStorage.setItem(`flowstate_goal_${currentUserId}`, dailyGoal);
+        localStorage.setItem(`flowstate_avatar_${currentUserId}`, selectedAvatar);
+      }
+
+      // If user is authenticated in Supabase, update user metadata
+      if (authData?.user) {
+        await supabase.auth.updateUser({
+          data: {
+            full_name: name,
+            professional_title: title,
+            avatar: selectedAvatar,
+          },
+        });
+      }
     } catch (error) {
-      console.error("Error saving profile to Supabase:", error);
+      console.warn("Notice: Profile save error:", error);
     } finally {
       setSaving(false);
       onClose();
@@ -227,7 +242,7 @@ export function ProfileModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 text-white"
-                placeholder="e.g. Alex Vance"
+                placeholder="e.g. John Doe"
                 required
               />
             </div>
@@ -241,7 +256,7 @@ export function ProfileModal({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 text-white"
-                placeholder="e.g. Flow Master"
+                placeholder="e.g. Software Engineer"
                 required
               />
             </div>

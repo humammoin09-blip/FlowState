@@ -299,19 +299,34 @@ export function calculateStreakState({
   };
 }
 
+export function getUserStreakKey(baseKey: string, userId?: string): string {
+  if (typeof window === "undefined") return baseKey;
+  const uid =
+    userId ||
+    localStorage.getItem("flowstate_active_user_id") ||
+    "guest_default";
+  return `${baseKey}_${uid}`;
+}
+
 /**
  * Loads user settings from Supabase (with localStorage fallback)
  */
-export async function fetchUserSettingsFromDB(): Promise<Partial<UserStreakData>> {
+export async function fetchUserSettingsFromDB(userId?: string): Promise<Partial<UserStreakData>> {
   const localData: Partial<UserStreakData> = {};
+  const activeUid =
+    userId ||
+    (typeof window !== "undefined"
+      ? localStorage.getItem("flowstate_active_user_id") || "guest_default"
+      : "guest_default");
+
   if (typeof window !== "undefined") {
-    const sDate = localStorage.getItem(STORAGE_KEYS.LAST_ACTIVE_DATE);
-    const sStreak = localStorage.getItem(STORAGE_KEYS.CURRENT_STREAK);
-    const sMax = localStorage.getItem(STORAGE_KEYS.MAX_STREAK);
-    const sBreak = localStorage.getItem(STORAGE_KEYS.LAST_BREAK_DATE);
-    const sPrev = localStorage.getItem(STORAGE_KEYS.PREVIOUS_STREAK);
-    const sSaver = localStorage.getItem(STORAGE_KEYS.LAST_STREAK_SAVER_USED);
-    const sBroken = localStorage.getItem(STORAGE_KEYS.IS_STREAK_BROKEN);
+    const sDate = localStorage.getItem(getUserStreakKey(STORAGE_KEYS.LAST_ACTIVE_DATE, activeUid));
+    const sStreak = localStorage.getItem(getUserStreakKey(STORAGE_KEYS.CURRENT_STREAK, activeUid));
+    const sMax = localStorage.getItem(getUserStreakKey(STORAGE_KEYS.MAX_STREAK, activeUid));
+    const sBreak = localStorage.getItem(getUserStreakKey(STORAGE_KEYS.LAST_BREAK_DATE, activeUid));
+    const sPrev = localStorage.getItem(getUserStreakKey(STORAGE_KEYS.PREVIOUS_STREAK, activeUid));
+    const sSaver = localStorage.getItem(getUserStreakKey(STORAGE_KEYS.LAST_STREAK_SAVER_USED, activeUid));
+    const sBroken = localStorage.getItem(getUserStreakKey(STORAGE_KEYS.IS_STREAK_BROKEN, activeUid));
 
     if (sDate) localData.lastActiveDate = sDate;
     if (sStreak) localData.currentStreak = parseInt(sStreak, 10);
@@ -326,7 +341,7 @@ export async function fetchUserSettingsFromDB(): Promise<Partial<UserStreakData>
     const { data, error } = await supabase
       .from("user_settings")
       .select("*")
-      .eq("id", "current_user")
+      .eq("id", activeUid)
       .maybeSingle();
 
     if (!error && data) {
@@ -349,40 +364,49 @@ export async function fetchUserSettingsFromDB(): Promise<Partial<UserStreakData>
 /**
  * Saves user streak settings to Supabase and LocalStorage
  */
-export async function persistStreakSettings(data: {
-  currentStreak: number;
-  maxStreak: number;
-  lastActiveDate: string | null;
-  lastBreakDate?: string | null;
-  previousStreak?: number;
-  lastStreakSaverUsed?: string | null;
-  isStreakBroken?: boolean;
-}): Promise<void> {
+export async function persistStreakSettings(
+  data: {
+    currentStreak: number;
+    maxStreak: number;
+    lastActiveDate: string | null;
+    lastBreakDate?: string | null;
+    previousStreak?: number;
+    lastStreakSaverUsed?: string | null;
+    isStreakBroken?: boolean;
+  },
+  userId?: string
+): Promise<void> {
+  const activeUid =
+    userId ||
+    (typeof window !== "undefined"
+      ? localStorage.getItem("flowstate_active_user_id") || "guest_default"
+      : "guest_default");
+
   // Always update localStorage immediately
   if (typeof window !== "undefined") {
     if (data.lastActiveDate) {
-      localStorage.setItem(STORAGE_KEYS.LAST_ACTIVE_DATE, data.lastActiveDate);
+      localStorage.setItem(getUserStreakKey(STORAGE_KEYS.LAST_ACTIVE_DATE, activeUid), data.lastActiveDate);
     }
-    localStorage.setItem(STORAGE_KEYS.CURRENT_STREAK, String(data.currentStreak));
-    localStorage.setItem(STORAGE_KEYS.MAX_STREAK, String(data.maxStreak));
+    localStorage.setItem(getUserStreakKey(STORAGE_KEYS.CURRENT_STREAK, activeUid), String(data.currentStreak));
+    localStorage.setItem(getUserStreakKey(STORAGE_KEYS.MAX_STREAK, activeUid), String(data.maxStreak));
     if (data.lastBreakDate) {
-      localStorage.setItem(STORAGE_KEYS.LAST_BREAK_DATE, data.lastBreakDate);
+      localStorage.setItem(getUserStreakKey(STORAGE_KEYS.LAST_BREAK_DATE, activeUid), data.lastBreakDate);
     }
     if (data.previousStreak !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.PREVIOUS_STREAK, String(data.previousStreak));
+      localStorage.setItem(getUserStreakKey(STORAGE_KEYS.PREVIOUS_STREAK, activeUid), String(data.previousStreak));
     }
     if (data.lastStreakSaverUsed) {
-      localStorage.setItem(STORAGE_KEYS.LAST_STREAK_SAVER_USED, data.lastStreakSaverUsed);
+      localStorage.setItem(getUserStreakKey(STORAGE_KEYS.LAST_STREAK_SAVER_USED, activeUid), data.lastStreakSaverUsed);
     }
     if (data.isStreakBroken !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.IS_STREAK_BROKEN, String(data.isStreakBroken));
+      localStorage.setItem(getUserStreakKey(STORAGE_KEYS.IS_STREAK_BROKEN, activeUid), String(data.isStreakBroken));
     }
   }
 
   // Sync to Supabase user_settings table
   try {
     await supabase.from("user_settings").upsert({
-      id: "current_user",
+      id: activeUid,
       last_active_date: data.lastActiveDate,
       current_streak: data.currentStreak,
       max_streak: data.maxStreak,
@@ -404,14 +428,15 @@ export async function persistStreakSettings(data: {
  */
 export async function handleSessionCompletedStreakUpdate(
   sessionMins: number,
-  sessionDate: Date = new Date()
+  sessionDate: Date = new Date(),
+  userId?: string
 ): Promise<UserStreakData> {
   const todayStr = getLocalDateString(sessionDate);
   const yesterdayDate = new Date(sessionDate);
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
   const yesterdayStr = getLocalDateString(yesterdayDate);
 
-  const stored = await fetchUserSettingsFromDB();
+  const stored = await fetchUserSettingsFromDB(userId);
   const prevLastActive = stored.lastActiveDate;
   const prevStreak = stored.currentStreak ?? 0;
   let maxStreak = stored.maxStreak ?? 0;
@@ -455,7 +480,7 @@ export async function handleSessionCompletedStreakUpdate(
     previousStreak: updatedData.previousStreak,
     lastStreakSaverUsed: updatedData.lastStreakSaverUsed,
     isStreakBroken: false,
-  });
+  }, userId);
 
   return updatedData;
 }
@@ -463,7 +488,10 @@ export async function handleSessionCompletedStreakUpdate(
 /**
  * Applies a Streak Saver (once every 30 days) to recover a broken streak.
  */
-export async function useStreakSaver(currentDate: Date = new Date()): Promise<{
+export async function useStreakSaver(
+  currentDate: Date = new Date(),
+  userId?: string
+): Promise<{
   success: boolean;
   message: string;
   data?: UserStreakData;
@@ -473,7 +501,7 @@ export async function useStreakSaver(currentDate: Date = new Date()): Promise<{
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
   const yesterdayStr = getLocalDateString(yesterdayDate);
 
-  const stored = await fetchUserSettingsFromDB();
+  const stored = await fetchUserSettingsFromDB(userId);
   const { canUse, cooldownDays } = checkStreakSaverAvailability(
     stored.lastStreakSaverUsed || null,
     todayStr
@@ -516,7 +544,7 @@ export async function useStreakSaver(currentDate: Date = new Date()): Promise<{
     previousStreak: updatedData.previousStreak,
     lastStreakSaverUsed: nowIso,
     isStreakBroken: false,
-  });
+  }, userId);
 
   return {
     success: true,

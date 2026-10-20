@@ -18,6 +18,7 @@ import {
   UserCheck,
   X,
   Menu,
+  User,
 } from "lucide-react";
 
 export type NavTab = "dashboard" | "timer" | "tasks" | "analytics";
@@ -41,9 +42,9 @@ export function Sidebar({
   pendingTasksCount,
   timerActive,
   timerTime,
-  userAvatar = "🚀",
-  userName = "Alex Vance",
-  userTitle = "Flow Master",
+  userAvatar = "",
+  userName = "Guest User",
+  userTitle = "New User",
   isMobileOpen = false,
   onCloseMobile,
 }: SidebarProps) {
@@ -207,13 +208,15 @@ export function Sidebar({
         <div className="relative flex items-center gap-3 p-2.5 rounded-xl bg-slate-900/60 border border-white/10">
           <div className="relative shrink-0">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-500 to-indigo-500 p-[1.5px] shadow-sm overflow-hidden">
-              <div className="w-full h-full bg-slate-950 rounded-full flex items-center justify-center text-xs font-bold text-emerald-400 overflow-hidden">
+              <div className="w-full h-full bg-slate-950 rounded-full flex items-center justify-center text-xs font-bold text-slate-300 overflow-hidden">
                 {userAvatar && (userAvatar.startsWith("data:image/") || userAvatar.startsWith("http")) ? (
                   <img src={userAvatar} alt="Avatar" className="w-full h-full object-cover" />
                 ) : userAvatar ? (
                   <span className="text-xs">{userAvatar}</span>
+                ) : userName === "Guest User" ? (
+                  <User className="w-4 h-4 text-slate-300" />
                 ) : (
-                  "AX"
+                  userName.slice(0, 2).toUpperCase()
                 )}
               </div>
             </div>
@@ -231,7 +234,7 @@ export function Sidebar({
                 {userName}
               </span>
               <span className="text-[10px] text-emerald-400/90 font-medium flex items-center gap-1 truncate">
-                <Sparkles className="w-2.5 h-2.5 shrink-0" /> {userTitle}
+                <Sparkles className="w-2.5 h-2.5 shrink-0" /> {userName === "Guest User" ? "New User" : userTitle}
               </span>
             </motion.div>
           )}
@@ -327,13 +330,15 @@ export function Sidebar({
               <div className="relative flex items-center gap-3 p-2.5 rounded-xl bg-slate-900/60 border border-white/10">
                 <div className="relative shrink-0">
                   <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-500 to-indigo-500 p-[1.5px] shadow-sm overflow-hidden">
-                    <div className="w-full h-full bg-slate-950 rounded-full flex items-center justify-center text-xs font-bold text-emerald-400 overflow-hidden">
+                    <div className="w-full h-full bg-slate-950 rounded-full flex items-center justify-center text-xs font-bold text-slate-300 overflow-hidden">
                       {userAvatar && (userAvatar.startsWith("data:image/") || userAvatar.startsWith("http")) ? (
                         <img src={userAvatar} alt="Avatar" className="w-full h-full object-cover" />
                       ) : userAvatar ? (
                         <span className="text-xs">{userAvatar}</span>
+                      ) : userName === "Guest User" ? (
+                        <User className="w-4 h-4 text-slate-300" />
                       ) : (
-                        "AX"
+                        userName.slice(0, 2).toUpperCase()
                       )}
                     </div>
                   </div>
@@ -342,7 +347,7 @@ export function Sidebar({
                 <div className="flex flex-col text-left overflow-hidden flex-1">
                   <span className="text-xs font-semibold text-slate-200 truncate">{userName}</span>
                   <span className="text-[10px] text-emerald-400/90 font-medium flex items-center gap-1 truncate">
-                    <Sparkles className="w-2.5 h-2.5 shrink-0" /> {userTitle}
+                    <Sparkles className="w-2.5 h-2.5 shrink-0" /> {userName === "Guest User" ? "New User" : userTitle}
                   </span>
                 </div>
               </div>

@@ -30,6 +30,7 @@ import { PanicInterventionModal } from "@/components/PanicInterventionModal";
 import { FocusBlueprintModal, FocusBlueprintRecord } from "@/components/FocusBlueprintModal";
 import { isExtensionInstalled, ExtensionRequiredModal } from "@/components/InstallExtensionBanner";
 import { handleSessionCompletedStreakUpdate } from "@/lib/streak-service";
+import { encodeSessionMode } from "@/lib/user-service";
 
 export type TimerMode = "focus" | "shortBreak" | "longBreak";
 
@@ -558,9 +559,12 @@ export function PomodoroTimer({
       // Always cache in localStorage for robust offline persistence
       if (typeof window !== "undefined") {
         try {
-          const cached = localStorage.getItem("flowstate_cached_focus_sessions");
+          const activeUid = localStorage.getItem("flowstate_active_user_id") || "guest_default";
+          const cacheKey = `flowstate_cached_focus_sessions_${activeUid}`;
+          const cached = localStorage.getItem(cacheKey);
           const existing = cached ? JSON.parse(cached) : [];
           existing.unshift(newSessionRecord);
+          localStorage.setItem(cacheKey, JSON.stringify(existing.slice(0, 100)));
           localStorage.setItem("flowstate_cached_focus_sessions", JSON.stringify(existing.slice(0, 100)));
         } catch {
           // ignore cache error
@@ -569,12 +573,19 @@ export function PomodoroTimer({
 
       (async () => {
         try {
+          const { data: authData } = await supabase.auth.getUser();
+          const activeUid =
+            authData?.user?.id ||
+            (typeof window !== "undefined"
+              ? localStorage.getItem("flowstate_active_user_id") || "guest_default"
+              : "guest_default");
+
           const { error } = await supabase
             .from("focus_sessions")
             .insert([
               {
                 duration_minutes: sessionMins,
-                mode: "focus",
+                mode: encodeSessionMode("focus", activeUid),
               },
             ]);
           if (error) console.warn("Supabase focus session sync notice (saved to local cache):", error);
@@ -1086,10 +1097,17 @@ export function PomodoroTimer({
     }
 
     try {
+      const { data: authData } = await supabase.auth.getUser();
+      const activeUid =
+        authData?.user?.id ||
+        (typeof window !== "undefined"
+          ? localStorage.getItem("flowstate_active_user_id") || "guest_default"
+          : "guest_default");
+
       const { error } = await supabase.from("focus_sessions").insert([
         {
           duration_minutes: 0,
-          mode: "Panic Quit",
+          mode: encodeSessionMode("Panic Quit", activeUid),
         },
       ]);
       if (error) console.warn("Supabase focus_sessions log notice:", error);
@@ -1964,8 +1982,8 @@ export function PomodoroTimer({
         minutesLeft={Math.max(1, Math.ceil(timeLeft / 60))}
         userName={
           typeof window !== "undefined"
-            ? localStorage.getItem("flowstate_user_name") || "Alex Vance"
-            : "Alex Vance"
+            ? localStorage.getItem("flowstate_user_name") || "Guest User"
+            : "Guest User"
         }
       />
 

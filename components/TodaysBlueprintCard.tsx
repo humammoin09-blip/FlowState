@@ -48,9 +48,15 @@ export function TodaysBlueprintCard({ onEditBlueprint }: TodaysBlueprintCardProp
 
       const todayStr = new Date().toISOString().split("T")[0];
 
+      const activeUid =
+        typeof window !== "undefined"
+          ? localStorage.getItem("flowstate_active_user_id") || "guest_default"
+          : "guest_default";
+      const storageKey = `flowstate_today_blueprint_${activeUid}`;
+
       // 1. Check local storage cache first for instant render on refresh
       if (typeof window !== "undefined") {
-        const cached = localStorage.getItem(STORAGE_KEY_TODAY_BLUEPRINT);
+        const cached = localStorage.getItem(storageKey);
         if (cached) {
           try {
             const parsed = JSON.parse(cached);
@@ -83,8 +89,8 @@ export function TodaysBlueprintCard({ onEditBlueprint }: TodaysBlueprintCardProp
         const latest = data[0] as FocusBlueprintRecord;
         setBlueprint(latest);
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEY_TODAY_BLUEPRINT, JSON.stringify(latest));
-          localStorage.setItem("flowstate_last_blueprint_date", todayStr);
+          localStorage.setItem(storageKey, JSON.stringify(latest));
+          localStorage.setItem(`flowstate_last_blueprint_date_${activeUid}`, todayStr);
         }
       }
     } catch (err) {

@@ -31,6 +31,10 @@ import {
   fetchUserSettingsFromDB,
   FocusSessionRecord,
 } from "@/lib/streak-service";
+import {
+  filterSessionsByUserId,
+  filterTasksByUserId,
+} from "@/lib/user-service";
 
 interface DayStat {
   day: string;
@@ -93,23 +97,33 @@ export function ConsistencyHeatmap() {
       setLoading(true);
       setIsOfflineFallback(false);
 
+      const { data: authData } = await supabase.auth.getUser();
+      const activeUid =
+        authData?.user?.id ||
+        (typeof window !== "undefined"
+          ? localStorage.getItem("flowstate_active_user_id") || "guest_default"
+          : "guest_default");
+
       // 1. Fetch Focus Sessions from Supabase with safe fallback
-      let sessions: Array<{ duration_minutes?: number; created_at?: string }> | null = null;
+      let sessions: Array<{ duration_minutes?: number; created_at?: string; mode?: string }> | null = null;
       try {
         const { data, error } = await supabase.from("focus_sessions").select("*");
         if (error) throw error;
-        sessions = data;
-        if (data && typeof window !== "undefined") {
-          localStorage.setItem("flowstate_cached_focus_sessions", JSON.stringify(data));
+        sessions = filterSessionsByUserId(data || [], activeUid);
+        if (sessions && typeof window !== "undefined") {
+          localStorage.setItem(`flowstate_cached_focus_sessions_${activeUid}`, JSON.stringify(sessions));
+          localStorage.setItem("flowstate_cached_focus_sessions", JSON.stringify(sessions));
         }
       } catch (dbErr) {
         console.warn("Supabase focus_sessions fetch failed, using offline fallback:", dbErr);
         setIsOfflineFallback(true);
         if (typeof window !== "undefined") {
-          const cached = localStorage.getItem("flowstate_cached_focus_sessions");
+          const cached =
+            localStorage.getItem(`flowstate_cached_focus_sessions_${activeUid}`) ||
+            localStorage.getItem("flowstate_cached_focus_sessions");
           if (cached) {
             try {
-              sessions = JSON.parse(cached);
+              sessions = filterSessionsByUserId(JSON.parse(cached), activeUid);
             } catch {
               sessions = null;
             }
@@ -156,7 +170,7 @@ export function ConsistencyHeatmap() {
       setConsistencyScore(calculatedScore > 0 ? calculatedScore : 0);
 
       // Active Streak & Streak History Calculation
-      const userSettings = await fetchUserSettingsFromDB();
+      const userSettings = await fetchUserSettingsFromDB(activeUid);
       const streakState = calculateStreakState({
         sessions: (sessions || []) as FocusSessionRecord[],
         storedData: userSettings,
@@ -168,22 +182,25 @@ export function ConsistencyHeatmap() {
       setDaysSinceLastBreak(streakState.daysSinceLastBreak);
 
       // 2. Fetch Tasks / MITs with safe fallback
-      let tasksData: Array<{ completed?: boolean }> | null = null;
+      let tasksData: Array<{ completed?: boolean; duration?: string }> | null = null;
       try {
         const { data, error } = await supabase.from("tasks").select("*");
         if (error) throw error;
-        tasksData = data;
-        if (data && typeof window !== "undefined") {
-          localStorage.setItem("flowstate_cached_tasks", JSON.stringify(data));
+        tasksData = filterTasksByUserId(data || [], activeUid);
+        if (tasksData && typeof window !== "undefined") {
+          localStorage.setItem(`flowstate_cached_tasks_${activeUid}`, JSON.stringify(tasksData));
+          localStorage.setItem("flowstate_cached_tasks", JSON.stringify(tasksData));
         }
       } catch (taskErr) {
         console.warn("Supabase tasks fetch failed, using offline fallback:", taskErr);
         setIsOfflineFallback(true);
         if (typeof window !== "undefined") {
-          const cached = localStorage.getItem("flowstate_cached_tasks");
+          const cached =
+            localStorage.getItem(`flowstate_cached_tasks_${activeUid}`) ||
+            localStorage.getItem("flowstate_cached_tasks");
           if (cached) {
             try {
-              tasksData = JSON.parse(cached);
+              tasksData = filterTasksByUserId(JSON.parse(cached), activeUid);
             } catch {
               tasksData = null;
             }

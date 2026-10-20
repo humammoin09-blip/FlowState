@@ -13,6 +13,11 @@ import {
   ClipboardList,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import {
+  encodeTaskDuration,
+  decodeTaskDuration,
+  filterTasksByUserId,
+} from "@/lib/user-service";
 
 export interface Task {
   id: string;
@@ -69,6 +74,13 @@ export default function TaskList(props?: TaskListProps) {
   const fetchTasks = useCallback(async () => {
     try {
       setLoading(true);
+      const { data: authData } = await supabase.auth.getUser();
+      const activeUid =
+        authData?.user?.id ||
+        (typeof window !== "undefined"
+          ? localStorage.getItem("flowstate_active_user_id") || "guest_default"
+          : "guest_default");
+
       const { data, error } = await supabase
         .from("tasks")
         .select("*")
@@ -76,11 +88,14 @@ export default function TaskList(props?: TaskListProps) {
 
       if (error) throw error;
       if (data) {
+        // Filter strictly to current user's tasks
+        const userTasks = filterTasksByUserId(data, activeUid);
         if (typeof window !== "undefined") {
-          localStorage.setItem("flowstate_cached_tasks", JSON.stringify(data));
+          localStorage.setItem(`flowstate_cached_tasks_${activeUid}`, JSON.stringify(userTasks));
+          localStorage.setItem("flowstate_cached_tasks", JSON.stringify(userTasks));
         }
 
-        const formattedTasks: Task[] = data.map((t) => {
+        const formattedTasks: Task[] = userTasks.map((t) => {
           const isCompletedSaved =
             typeof window !== "undefined" &&
             localStorage.getItem(`task_completed_${t.id}`) === "true";
@@ -103,13 +118,15 @@ export default function TaskList(props?: TaskListProps) {
             }
             return {
               ...t,
+              duration: decodeTaskDuration(t.duration),
               completed: true,
               remainingSeconds: 0,
               remaining_seconds: 0,
             };
           }
 
-          const defaultMins = parseInt(t.duration || "5", 10) || 5;
+          const rawDuration = decodeTaskDuration(t.duration);
+          const defaultMins = parseInt(rawDuration || "5", 10) || 5;
 
           let remaining: number;
           if (savedTime !== null) {
@@ -127,6 +144,7 @@ export default function TaskList(props?: TaskListProps) {
             }
             return {
               ...t,
+              duration: rawDuration,
               completed: true,
               remainingSeconds: 0,
               remaining_seconds: 0,
@@ -139,6 +157,7 @@ export default function TaskList(props?: TaskListProps) {
 
           return {
             ...t,
+            duration: rawDuration,
             completed: false,
             remainingSeconds: isNaN(remaining) ? defaultMins * 60 : remaining,
           };
@@ -148,25 +167,29 @@ export default function TaskList(props?: TaskListProps) {
     } catch (error) {
       console.warn("Graceful fallback: error fetching tasks from database, loading local cache:", error);
       if (typeof window !== "undefined") {
-        const cached = localStorage.getItem("flowstate_cached_tasks");
+        const activeUid = localStorage.getItem("flowstate_active_user_id") || "guest_default";
+        const cached = localStorage.getItem(`flowstate_cached_tasks_${activeUid}`) || localStorage.getItem("flowstate_cached_tasks");
         if (cached) {
           try {
             const parsed = JSON.parse(cached);
             const normalized = parsed.map((t: Task) => {
               const isCompletedSaved = localStorage.getItem(`task_completed_${t.id}`) === "true";
               const savedTime = localStorage.getItem(`task_timer_${t.id}`);
+              const rawDuration = decodeTaskDuration(t.duration);
               if (t.completed || t.remaining_seconds === 0 || isCompletedSaved || savedTime === "0") {
                 return {
                   ...t,
+                  duration: rawDuration,
                   completed: true,
                   remainingSeconds: 0,
                   remaining_seconds: 0,
                 };
               }
-              const defaultMins = parseInt(t.duration || "5", 10) || 5;
+              const defaultMins = parseInt(rawDuration || "5", 10) || 5;
               const rem = savedTime !== null ? parseInt(savedTime, 10) : (t.remainingSeconds ?? defaultMins * 60);
               return {
                 ...t,
+                duration: rawDuration,
                 completed: false,
                 remainingSeconds: isNaN(rem) ? defaultMins * 60 : rem,
               };
@@ -414,9 +437,17 @@ export default function TaskList(props?: TaskListProps) {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
 
+    const { data: authData } = await supabase.auth.getUser();
+    const activeUid =
+      authData?.user?.id ||
+      (typeof window !== "undefined"
+        ? localStorage.getItem("flowstate_active_user_id") || "guest_default"
+        : "guest_default");
+
     const durationMins = parseInt(newTaskDuration, 10) || 5;
     const initialSeconds = durationMins * 60;
     const fallbackId = `local_task_${Date.now()}`;
+    const encodedDuration = encodeTaskDuration(`${durationMins}m`, activeUid);
 
     try {
       let data, error;
@@ -427,7 +458,7 @@ export default function TaskList(props?: TaskListProps) {
             title: newTaskTitle,
             priority: newTaskPriority,
             completed: false,
-            duration: `${durationMins}m`,
+            duration: encodedDuration,
             remaining_seconds: initialSeconds,
           },
         ])
@@ -444,7 +475,7 @@ export default function TaskList(props?: TaskListProps) {
               title: newTaskTitle,
               priority: newTaskPriority,
               completed: false,
-              duration: `${durationMins}m`,
+              duration: encodedDuration,
             },
           ])
           .select();
@@ -461,12 +492,14 @@ export default function TaskList(props?: TaskListProps) {
 
         const newTask: Task = {
           ...data[0],
+          duration: `${durationMins}m`,
           completed: false,
           remainingSeconds: initialSeconds,
           remaining_seconds: initialSeconds,
         };
         const updated = [newTask, ...tasks];
         setTasks(updated);
+        localStorage.setItem(`flowstate_cached_tasks_${activeUid}`, JSON.stringify(updated));
         localStorage.setItem("flowstate_cached_tasks", JSON.stringify(updated));
         setNewTaskTitle("");
         setNewTaskDuration("5");
@@ -489,6 +522,7 @@ export default function TaskList(props?: TaskListProps) {
       };
       const updated = [fallbackTask, ...tasks];
       setTasks(updated);
+      localStorage.setItem(`flowstate_cached_tasks_${activeUid}`, JSON.stringify(updated));
       localStorage.setItem("flowstate_cached_tasks", JSON.stringify(updated));
       setNewTaskTitle("");
       setNewTaskDuration("5");
@@ -525,6 +559,8 @@ export default function TaskList(props?: TaskListProps) {
     );
     setTasks(updated);
     if (typeof window !== "undefined") {
+      const activeUid = localStorage.getItem("flowstate_active_user_id") || "guest_default";
+      localStorage.setItem(`flowstate_cached_tasks_${activeUid}`, JSON.stringify(updated));
       localStorage.setItem("flowstate_cached_tasks", JSON.stringify(updated));
     }
 
@@ -562,6 +598,8 @@ export default function TaskList(props?: TaskListProps) {
     const updated = tasks.filter((task) => task.id !== id);
     setTasks(updated);
     if (typeof window !== "undefined") {
+      const activeUid = localStorage.getItem("flowstate_active_user_id") || "guest_default";
+      localStorage.setItem(`flowstate_cached_tasks_${activeUid}`, JSON.stringify(updated));
       localStorage.setItem("flowstate_cached_tasks", JSON.stringify(updated));
     }
 
