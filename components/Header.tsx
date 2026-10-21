@@ -5,14 +5,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Search,
   Bell,
-  Sparkles,
-  Flame,
   Clock,
   CheckCircle2,
-  ChevronDown,
-  Volume2,
   ShieldCheck,
   Zap,
+  Flame,
   Check,
   Trash2,
   Menu,
@@ -20,41 +17,15 @@ import {
   HelpCircle,
 } from "lucide-react";
 import { calculateUserXP, calculateUserLevel } from "@/lib/user-service";
+import {
+  useNotifications,
+  NotificationItem,
+  STORAGE_KEY_NOTIFICATIONS,
+  NOTIFICATION_EVENT,
+} from "@/lib/NotificationContext";
 
-export interface NotificationItem {
-  id: string | number;
-  title: string;
-  time: string;
-  timestamp?: number;
-  read: boolean;
-  type?: "pomodoro" | "task" | "system";
-}
-
-export const STORAGE_KEY_NOTIFICATIONS = "flowstate_notifications";
-export const NOTIFICATION_EVENT = "flowstate_new_notification";
-
-const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: "welcome-1",
-    title: "Welcome to FlowState! ⚡",
-    time: "Just now",
-    timestamp: Date.now(),
-    read: false,
-    type: "system",
-  },
-];
-
-function formatTimeAgo(timestamp?: number, fallback = "Just now"): string {
-  if (!timestamp) return fallback;
-  const diffSec = Math.floor((Date.now() - timestamp) / 1000);
-  if (diffSec < 60) return "Just now";
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour}h ago`;
-  const diffDay = Math.floor(diffHour / 24);
-  return `${diffDay}d ago`;
-}
+export type { NotificationItem };
+export { STORAGE_KEY_NOTIFICATIONS, NOTIFICATION_EVENT };
 
 interface HeaderProps {
   timerActive: boolean;
@@ -82,173 +53,45 @@ export function Header({
   const [greeting, setGreeting] = useState("Good Afternoon");
   const [currentDateStr, setCurrentDateStr] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Ref tracking notified events to prevent duplicate notifications during countdown intervals
-  const notifiedEventsRef = useRef<Set<string>>(new Set());
+  const {
+    notifications,
+    unreadCount,
+    markAllAsRead,
+    markAsRead,
+    clearAllNotifications,
+  } = useNotifications();
 
-  // Initialize notifications from localStorage with fallback to DEFAULT_NOTIFICATIONS
+  // Close dropdown on click outside
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_NOTIFICATIONS);
-      if (saved) {
-        const parsed: NotificationItem[] = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const updated = parsed.map((n) => ({
-            ...n,
-            time: formatTimeAgo(n.timestamp, n.time),
-          }));
-          setNotifications(updated);
-          return;
-        }
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowNotifications(false);
       }
-    } catch {
-      // Fallback on json parse errors
     }
-    setNotifications(DEFAULT_NOTIFICATIONS);
-    try {
-      localStorage.setItem(
-        STORAGE_KEY_NOTIFICATIONS,
-        JSON.stringify(DEFAULT_NOTIFICATIONS)
-      );
-    } catch {
-      // Ignore localStorage write error
+
+    if (showNotifications) {
+      document.addEventListener("mousedown", handleClickOutside);
     }
-  }, []);
-
-  // Save helper function
-  const saveNotifications = (items: NotificationItem[]) => {
-    setNotifications(items);
-    try {
-      localStorage.setItem(STORAGE_KEY_NOTIFICATIONS, JSON.stringify(items));
-    } catch {
-      // Ignore
-    }
-  };
-
-  const addNotification = (item: {
-    title: string;
-    type?: "pomodoro" | "task" | "system";
-  }) => {
-    const newItem: NotificationItem = {
-      id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      title: item.title,
-      time: "Just now",
-      timestamp: Date.now(),
-      read: false,
-      type: item.type || "system",
-    };
-
-    setNotifications((prev) => {
-      const updated = [newItem, ...prev.slice(0, 29)];
-      try {
-        localStorage.setItem(
-          STORAGE_KEY_NOTIFICATIONS,
-          JSON.stringify(updated)
-        );
-      } catch {
-        // Ignore
-      }
-      return updated;
-    });
-  };
-
-  // Real-time notification event listener & cross-tab storage sync
-  useEffect(() => {
-    // 1. Custom event listener for explicitly dispatched notification events
-    const handleCustomNotification = (e: Event) => {
-      const customEvent = e as CustomEvent<{
-        title: string;
-        type?: "pomodoro" | "task" | "system";
-      }>;
-      if (customEvent.detail && customEvent.detail.title) {
-        addNotification({
-          title: customEvent.detail.title,
-          type: customEvent.detail.type,
-        });
-      }
-    };
-
-    // 2. Storage event listener for updates from other tabs
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY_NOTIFICATIONS && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          if (Array.isArray(parsed)) {
-            setNotifications(
-              parsed.map((n: NotificationItem) => ({
-                ...n,
-                time: formatTimeAgo(n.timestamp, n.time),
-              }))
-            );
-          }
-        } catch {
-          // Ignore
-        }
-      }
-    };
-
-    // 3. Listener / Poller for Pomodoro and Task timer transitions to zero or alerts
-    const checkTimerEvents = () => {
-      // Check Pomodoro Target End Time
-      const pomodoroTargetEnd = localStorage.getItem("flowstate_pomodoro_target_end_time");
-      const pomodoroRunning = localStorage.getItem("flowstate_pomodoro_running") === "true";
-      const pomodoroMode = localStorage.getItem("flowstate_pomodoro_mode") || "focus";
-
-      if (pomodoroTargetEnd && pomodoroRunning) {
-        const endTimeNum = Number(pomodoroTargetEnd);
-        const remaining = Math.ceil((endTimeNum - Date.now()) / 1000);
-
-        if (remaining <= 0) {
-          const eventKey = `pomodoro_zero_${endTimeNum}`;
-          if (!notifiedEventsRef.current.has(eventKey)) {
-            notifiedEventsRef.current.add(eventKey);
-            const modeName = pomodoroMode.charAt(0).toUpperCase() + pomodoroMode.slice(1);
-            addNotification({
-              title: `Pomodoro ${modeName} Session Complete! 🎯`,
-              type: "pomodoro",
-            });
-          }
-        }
-      }
-
-      // Check MIT task timers in localStorage
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith("task_timer_end_")) {
-          const taskId = key.replace("task_timer_end_", "");
-          const endVal = localStorage.getItem(key);
-          if (endVal) {
-            const endNum = Number(endVal);
-            const taskRemaining = Math.ceil((endNum - Date.now()) / 1000);
-            if (taskRemaining <= 0) {
-              const eventKey = `task_zero_${taskId}_${endNum}`;
-              if (!notifiedEventsRef.current.has(eventKey)) {
-                notifiedEventsRef.current.add(eventKey);
-                addNotification({
-                  title: `MIT Task Timer Hit 0:00! ⚡`,
-                  type: "task",
-                });
-              }
-            }
-          }
-        }
-      }
-    };
-
-    window.addEventListener(NOTIFICATION_EVENT, handleCustomNotification);
-    window.addEventListener("storage", handleStorageChange);
-
-    const timerCheckInterval = setInterval(checkTimerEvents, 1000);
-
     return () => {
-      window.removeEventListener(NOTIFICATION_EVENT, handleCustomNotification);
-      window.removeEventListener("storage", handleStorageChange);
-      clearInterval(timerCheckInterval);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, []);
+  }, [showNotifications]);
 
-  // Update timestamps and header greeting
+  // Toggle dropdown and mark all notifications as read when opening
+  const toggleNotifications = () => {
+    const nextState = !showNotifications;
+    setShowNotifications(nextState);
+    if (nextState) {
+      markAllAsRead();
+    }
+  };
+
+  // Update header greeting and date
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -263,31 +106,12 @@ export function Header({
         day: "numeric",
       };
       setCurrentDateStr(now.toLocaleDateString("en-US", options));
-
-      // Refresh relative timestamps (e.g. "Just now" -> "1m ago")
-      setNotifications((prev) =>
-        prev.map((n) => ({
-          ...n,
-          time: formatTimeAgo(n.timestamp, n.time),
-        }))
-      );
     };
 
     updateTime();
     const interval = setInterval(updateTime, 60000);
     return () => clearInterval(interval);
   }, []);
-
-  const markAllAsRead = () => {
-    const updated = notifications.map((n) => ({ ...n, read: true }));
-    saveNotifications(updated);
-  };
-
-  const clearAllNotifications = () => {
-    saveNotifications([]);
-  };
-
-  const unreadCount = notifications.filter((n) => !n.read).length;
 
   // Dynamic XP & Level calculation
   const currentXP = calculateUserXP(focusHours, completedTasksCount);
@@ -305,7 +129,7 @@ export function Header({
         .slice(0, 2);
 
   return (
-    <header className="sticky top-0 z-20 w-full px-3 sm:px-6 py-3 sm:py-4 bg-slate-950/80 backdrop-blur-xl border-b border-white/10 flex items-center justify-between gap-3 overflow-x-hidden">
+    <header className="sticky top-0 z-40 w-full px-3 sm:px-6 py-3 sm:py-4 bg-slate-950/80 backdrop-blur-xl border-b border-white/10 flex items-center justify-between gap-3">
       {/* Left: Mobile Hamburger Toggle + Greeting Banner & Live Status */}
       <div className="flex items-center gap-2 sm:gap-4 min-w-0">
         <button
@@ -371,7 +195,7 @@ export function Header({
               window.dispatchEvent(new CustomEvent("flowstate_open_welcome_modal"));
             }
           }}
-          className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-slate-900/80 border border-white/10 text-slate-300 hover:text-white hover:border-emerald-500/40 hover:text-emerald-400 transition-all cursor-pointer"
+          className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-slate-900/80 border border-white/10 text-slate-300 hover:text-white hover:border-emerald-500/40 hover:text-emerald-400 transition-all cursor-pointer flex-shrink-0"
           aria-label="Welcome Guide"
           title="Open Welcome Guide"
         >
@@ -379,43 +203,52 @@ export function Header({
         </button>
 
         {/* Notification Bell Dropdown */}
-        <div className="relative">
+        <div ref={dropdownRef} className="relative flex-shrink-0">
           <button
-            onClick={() => setShowNotifications(!showNotifications)}
-            className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-slate-900/80 border border-white/10 text-slate-300 hover:text-white hover:border-white/20 transition-all"
+            type="button"
+            onClick={toggleNotifications}
+            className="relative flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-xl bg-slate-900/80 border border-white/10 text-slate-300 hover:text-white hover:border-white/20 transition-colors cursor-pointer"
             aria-label="Notifications"
+            aria-expanded={showNotifications}
           >
-            <Bell className="w-4 h-4" />
+            <Bell className="w-4 h-4 pointer-events-none" />
             {unreadCount > 0 && (
-              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#10b981]" />
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-[10px] font-bold text-slate-950 flex items-center justify-center border-2 border-slate-950 shadow-[0_0_10px_rgba(16,185,129,0.5)] pointer-events-none leading-none">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
             )}
           </button>
 
           <AnimatePresence>
             {showNotifications && (
               <motion.div
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                initial={{ opacity: 0, y: 8, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                transition={{ duration: 0.15 }}
-                className="absolute right-0 mt-2 w-80 rounded-2xl bg-slate-900/95 backdrop-blur-2xl border border-white/15 shadow-2xl p-4 z-50 space-y-3"
+                exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                transition={{ duration: 0.15, ease: "easeOut" }}
+                className="absolute right-0 top-full mt-2 w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] rounded-2xl bg-slate-900/95 backdrop-blur-2xl border border-white/15 shadow-2xl p-4 z-50 space-y-3"
               >
                 <div className="flex items-center justify-between border-b border-white/10 pb-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-white uppercase tracking-wider">
                       Notifications
                     </span>
-                    {unreadCount > 0 && (
+                    {unreadCount > 0 ? (
                       <span className="text-[10px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                         {unreadCount} New
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-medium text-slate-400 bg-white/5 px-2 py-0.5 rounded-full">
+                        All Caught Up
                       </span>
                     )}
                   </div>
                   {notifications.length > 0 && (
                     <div className="flex items-center gap-2">
                       <button
+                        type="button"
                         onClick={markAllAsRead}
-                        className="text-[10px] text-slate-400 hover:text-emerald-400 transition-colors flex items-center gap-0.5"
+                        className="text-[10px] text-slate-400 hover:text-emerald-400 transition-colors flex items-center gap-0.5 cursor-pointer"
                         title="Mark all as read"
                       >
                         <Check className="w-3 h-3" />
@@ -423,8 +256,9 @@ export function Header({
                       </button>
                       <span className="text-slate-600">•</span>
                       <button
+                        type="button"
                         onClick={clearAllNotifications}
-                        className="text-[10px] text-slate-400 hover:text-rose-400 transition-colors flex items-center gap-0.5"
+                        className="text-[10px] text-slate-400 hover:text-rose-400 transition-colors flex items-center gap-0.5 cursor-pointer"
                         title="Clear all"
                       >
                         <Trash2 className="w-3 h-3" />
@@ -434,9 +268,9 @@ export function Header({
                   )}
                 </div>
 
-                <div className="space-y-2 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
+                <div className="space-y-2 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
                   {notifications.length === 0 ? (
-                    <div className="py-6 text-center text-xs text-slate-400">
+                    <div className="py-8 text-center text-xs text-slate-400">
                       No notifications yet
                     </div>
                   ) : (
@@ -445,10 +279,7 @@ export function Header({
                         key={n.id}
                         onClick={() => {
                           if (!n.read) {
-                            const updated = notifications.map((item) =>
-                              item.id === n.id ? { ...item, read: true } : item
-                            );
-                            saveNotifications(updated);
+                            markAsRead(n.id);
                           }
                           if (String(n.title).toLowerCase().includes("welcome to flowstate")) {
                             if (typeof window !== "undefined") {
@@ -457,18 +288,20 @@ export function Header({
                             setShowNotifications(false);
                           }
                         }}
-                        className={`flex items-start gap-2.5 p-2 rounded-xl transition-all text-left cursor-pointer ${
+                        className={`flex items-start gap-2.5 p-2.5 rounded-xl transition-all text-left cursor-pointer ${
                           n.read
-                            ? "bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 opacity-75"
-                            : "bg-emerald-500/[0.06] hover:bg-emerald-500/[0.1] border border-emerald-500/20"
+                            ? "bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 opacity-80"
+                            : "bg-emerald-500/[0.08] hover:bg-emerald-500/[0.12] border border-emerald-500/25"
                         }`}
                       >
                         <div
-                          className={`p-1.5 rounded-lg border mt-0.5 ${
+                          className={`p-1.5 rounded-lg border mt-0.5 flex-shrink-0 ${
                             n.type === "pomodoro"
                               ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
                               : n.type === "task"
                               ? "bg-cyan-500/10 border-cyan-500/20 text-cyan-400"
+                              : n.type === "streak"
+                              ? "bg-orange-500/10 border-orange-500/20 text-orange-400"
                               : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
                           }`}
                         >
@@ -476,13 +309,15 @@ export function Header({
                             <Clock className="w-3.5 h-3.5" />
                           ) : n.type === "task" ? (
                             <CheckCircle2 className="w-3.5 h-3.5" />
+                          ) : n.type === "streak" ? (
+                            <Flame className="w-3.5 h-3.5" />
                           ) : (
                             <Zap className="w-3.5 h-3.5" />
                           )}
                         </div>
-                        <div className="flex-1 overflow-hidden">
+                        <div className="flex-1 overflow-hidden min-w-0">
                           <p
-                            className={`text-xs ${
+                            className={`text-xs leading-snug break-words ${
                               n.read
                                 ? "font-normal text-slate-300"
                                 : "font-semibold text-white"
@@ -490,12 +325,12 @@ export function Header({
                           >
                             {n.title}
                           </p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">
+                          <p className="text-[10px] text-slate-400 mt-1">
                             {n.time}
                           </p>
                         </div>
                         {!n.read && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 flex-shrink-0" />
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 mt-1.5 flex-shrink-0 shadow-[0_0_6px_#10b981]" />
                         )}
                       </div>
                     ))
@@ -509,7 +344,7 @@ export function Header({
         {/* User Profile Avatar Badge - Clickable to open ProfileModal */}
         <div
           onClick={onOpenProfile}
-          className="flex items-center gap-2.5 pl-2 border-l border-white/10 cursor-pointer group"
+          className="flex items-center gap-2.5 pl-2 border-l border-white/10 cursor-pointer group flex-shrink-0"
           title="Click to edit profile"
         >
           <div className="relative transition-transform group-hover:scale-105">

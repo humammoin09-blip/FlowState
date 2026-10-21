@@ -381,7 +381,7 @@ export default function TaskList(props?: TaskListProps) {
                 window.dispatchEvent(
                   new CustomEvent("flowstate_new_notification", {
                     detail: {
-                      title: `MIT Task "${task.title}" Timer Hit 0:00! ⚡`,
+                      title: `MIT Task '${task.title}' timer hit 0:00.`,
                       type: "task",
                     },
                   })

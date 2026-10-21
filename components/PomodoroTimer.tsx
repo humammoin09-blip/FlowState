@@ -658,6 +658,17 @@ export function PomodoroTimer({
 
       // Immediate Browser Notification at 0:00:
       // '🎉 Session Complete! You crushed [X] minutes. Open FlowState to claim your victory.'
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("flowstate_new_notification", {
+            detail: {
+              title: `You completed a ${sessionMins}m session! Great job.`,
+              type: "pomodoro",
+            },
+          })
+        );
+      }
+
       if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
         try {
           const notif = new Notification("🎉 Session Complete!", {
@@ -724,7 +735,23 @@ export function PomodoroTimer({
         }
 
         try {
-          await handleSessionCompletedStreakUpdate(sessionMins);
+          const streakResult = await handleSessionCompletedStreakUpdate(sessionMins);
+          if (streakResult && streakResult.currentStreak > 0) {
+            const current = streakResult.currentStreak;
+            const prev = streakResult.previousStreak || 0;
+            if (current > prev || [1, 3, 5, 7, 10, 14, 21, 30, 50, 100].includes(current)) {
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(
+                  new CustomEvent("flowstate_new_notification", {
+                    detail: {
+                      title: `🔥 Streak Milestone: ${current}-day streak reached! Keep up the momentum!`,
+                      type: "streak",
+                    },
+                  })
+                );
+              }
+            }
+          }
         } catch (streakErr) {
           console.warn("Streak update error:", streakErr);
         }
@@ -732,6 +759,16 @@ export function PomodoroTimer({
         if (onFocusComplete) onFocusComplete();
       })();
     } else {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("flowstate_new_notification", {
+            detail: {
+              title: "Pomodoro break complete! Ready to start another focus block?",
+              type: "pomodoro",
+            },
+          })
+        );
+      }
       if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
         try {
           new Notification("FlowState Break Complete! ☕", {
@@ -864,6 +901,16 @@ export function PomodoroTimer({
         if (left === 120 || left === 60) {
           if (!notifiedTimesRef.current.has(left)) {
             notifiedTimesRef.current.add(left);
+            if (savedMode === "focus" && left === 120 && typeof window !== "undefined") {
+              window.dispatchEvent(
+                new CustomEvent("flowstate_new_notification", {
+                  detail: {
+                    title: "2 minutes left in your focus session.",
+                    type: "pomodoro",
+                  },
+                })
+              );
+            }
             if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
               new Notification("FlowState Focus Alert ⚡", {
                 body: `Focus session ending soon! ${Math.ceil(left / 60)} minute${left > 60 ? "s" : ""} remaining.`,

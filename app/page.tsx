@@ -246,6 +246,16 @@ export default function FlowStateDashboard() {
       setStreakSaverCooldownDays(30);
       setStreakLossModalOpen(false);
       fetchAnalyticsAndStreak();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("flowstate_new_notification", {
+            detail: {
+              title: `🛡️ Streak Saved! Your ${result.data.currentStreak}-day streak is protected!`,
+              type: "streak",
+            },
+          })
+        );
+      }
     } else {
       alert(result.message);
     }
@@ -542,7 +552,7 @@ export default function FlowStateDashboard() {
       />
 
       {/* Main Container */}
-      <div className="flex-1 flex flex-col min-w-0 z-10 overflow-x-hidden">
+      <div className="flex-1 flex flex-col min-w-0 z-10">
         {/* Top Header with Profile Click Handler & Mobile Menu Toggle */}
         <Header 
           timerActive={timerActive} 

@@ -37,6 +37,14 @@ export function checkAndSendEveningStreakAlert(params: {
   if (isEvening && isInactive) {
     try {
       const streakText = params.streakDays > 0 ? `${params.streakDays}-day streak` : "daily momentum";
+      window.dispatchEvent(
+        new CustomEvent("flowstate_new_notification", {
+          detail: {
+            title: `⚠️ Streak Shield: Your ${streakText} will break at midnight! Lock in a focus session now.`,
+            type: "streak",
+          },
+        })
+      );
       new Notification("⚠️ Streak Shield: Do Not Break The Chain!", {
         body: `It's evening and you have 0 focus hours logged today. Your ${streakText} will break at midnight! Lock in a 25-minute session now.`,
         icon: "/favicon.ico",
@@ -71,6 +79,14 @@ export function sendTestStreakAlert(params: {
 
   if (Notification.permission === "granted") {
     const streakText = params.streakDays > 0 ? `${params.streakDays}-day active streak` : "daily consistency";
+    window.dispatchEvent(
+      new CustomEvent("flowstate_new_notification", {
+        detail: {
+          title: `🛡️ FlowState Streak Shield Alert: Protect your ${streakText}!`,
+          type: "streak",
+        },
+      })
+    );
     new Notification("🛡️ FlowState Streak Shield Alert (Test)", {
       body: `Accountability Check: You're at risk of losing your ${streakText} before midnight! Deploy a 25m focus sprint now.`,
       icon: "/favicon.ico",
