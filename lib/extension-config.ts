@@ -5,7 +5,7 @@
 // NOTE: When deploying to production, update "https://*.yourdomain.com/*" with your production domain (e.g. "https://flowstate.app/*" or Vercel URL)
 export const EXTENSION_CONTENT_SCRIPT_MATCHES = [
   "http://localhost:3000/*",
-  "https://*.yourdomain.com/*",
+  "https://flowstate-deepwork.vercel.app/*",
 ];
 
 /**
