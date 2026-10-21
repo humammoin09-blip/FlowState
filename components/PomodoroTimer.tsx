@@ -300,7 +300,18 @@ export function PomodoroTimer({
   onFocusComplete,
 }: PomodoroTimerProps) {
   // Custom focus duration in minutes (default: 25)
-  const [customFocusMins, setCustomFocusMins] = useState<number>(25);
+  const [customFocusMins, setCustomFocusMins] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(STORAGE_KEY_FOCUS_DURATION);
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed >= 1 && parsed <= 120) {
+          return parsed;
+        }
+      }
+    }
+    return 25;
+  });
   const [showCustomDuration, setShowCustomDuration] = useState<boolean>(false);
   const [pendingModeSwitch, setPendingModeSwitch] = useState<TimerMode | null>(null);
 
@@ -363,7 +374,26 @@ export function PomodoroTimer({
 
   // Session Complete Celebration state
   const [showCelebration, setShowCelebration] = useState<boolean>(false);
-  const [celebrationDuration, setCelebrationDuration] = useState<number>(25);
+  const [celebrationDuration, setCelebrationDuration] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const pendingDur = localStorage.getItem("pending_celebration_duration");
+      if (pendingDur) {
+        const parsed = parseInt(pendingDur, 10);
+        if (!isNaN(parsed) && parsed > 0) return parsed;
+      }
+      const lastSession = localStorage.getItem("flowstate_last_completed_session_duration");
+      if (lastSession) {
+        const parsed = parseInt(lastSession, 10);
+        if (!isNaN(parsed) && parsed > 0) return parsed;
+      }
+      const customFocus = localStorage.getItem(STORAGE_KEY_FOCUS_DURATION);
+      if (customFocus) {
+        const parsed = parseInt(customFocus, 10);
+        if (!isNaN(parsed) && parsed > 0) return parsed;
+      }
+    }
+    return 25;
+  });
   const [celebrationStartTime, setCelebrationStartTime] = useState<number | null>(null);
   const [celebrationEndTime, setCelebrationEndTime] = useState<number | null>(null);
   const sessionStartTimeRef = useRef<number | null>(null);
@@ -572,13 +602,6 @@ export function PomodoroTimer({
     console.log('[FlowState] Broadcasting LOCKDOWN_END');
     broadcastExtensionMessage("FLOWSTATE_LOCKDOWN_END");
 
-    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-      new Notification("FlowState Focus Complete! 🎯", {
-        body: "Great job! Your focus session is complete.",
-        icon: "/favicon.ico",
-      });
-    }
-
     if (currentMode === "focus") {
       setCompletedSessions((prev) => {
         const next = Math.min(prev + 1, 4);
@@ -595,8 +618,18 @@ export function PomodoroTimer({
       const elapsedMins =
         startTimeVal && now > startTimeVal ? Math.round((now - startTimeVal) / (60 * 1000)) : null;
 
-      // Dynamic calculation: use customFocusMins if set, or elapsed duration, fallback to 25
-      const sessionMins = customFocusMins || (elapsedMins && elapsedMins > 0 ? elapsedMins : 25);
+      // Dynamic calculation: use saved setting, customFocusMins, or elapsed duration, fallback to 25
+      const savedDurationSetting =
+        typeof window !== "undefined"
+          ? localStorage.getItem(STORAGE_KEY_FOCUS_DURATION) ||
+            localStorage.getItem("flowstate_current_session_duration")
+          : null;
+      const configuredMins = savedDurationSetting ? parseInt(savedDurationSetting, 10) : null;
+      const sessionMins =
+        configuredMins && !isNaN(configuredMins) && configuredMins > 0
+          ? configuredMins
+          : customFocusMins || (elapsedMins && elapsedMins > 0 ? elapsedMins : 25);
+
       const newSessionRecord = {
         duration_minutes: sessionMins,
         mode: "focus",
@@ -620,11 +653,53 @@ export function PomodoroTimer({
         }
       }
 
-      // Trigger full-screen celebration modal with dynamic duration
+      // Check whether user is currently away from the FlowState tab
+      const isUserAway = typeof document !== "undefined" && (document.hidden || !document.hasFocus());
+
+      // Immediate Browser Notification at 0:00:
+      // '🎉 Session Complete! You crushed [X] minutes. Open FlowState to claim your victory.'
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+        try {
+          const notif = new Notification("🎉 Session Complete!", {
+            body: `You crushed ${sessionMins} minutes. Open FlowState to claim your victory.`,
+            icon: "/favicon.ico",
+            tag: "flowstate-session-complete",
+            requireInteraction: true,
+          });
+          notif.onclick = () => {
+            window.focus();
+            notif.close();
+            setCelebrationDuration(sessionMins);
+            setCelebrationEndTime(Date.now());
+            setShowCelebration(true);
+            localStorage.removeItem("pending_celebration");
+            localStorage.removeItem("pending_celebration_duration");
+          };
+        } catch {
+          // ignore notification error
+        }
+      }
+
       setCelebrationDuration(sessionMins);
       setCelebrationStartTime(startTimeVal || null);
       setCelebrationEndTime(now);
-      setShowCelebration(true);
+
+      if (isUserAway) {
+        // Do NOT show the full-screen celebration overlay while the user is away
+        setShowCelebration(false);
+        // Set flag pending_celebration in localStorage
+        if (typeof window !== "undefined") {
+          localStorage.setItem("pending_celebration", "true");
+          localStorage.setItem("pending_celebration_duration", String(sessionMins));
+        }
+      } else {
+        // User is present on the tab: show celebration immediately
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("pending_celebration");
+          localStorage.removeItem("pending_celebration_duration");
+        }
+        setShowCelebration(true);
+      }
 
       (async () => {
         try {
@@ -656,6 +731,17 @@ export function PomodoroTimer({
 
         if (onFocusComplete) onFocusComplete();
       })();
+    } else {
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+        try {
+          new Notification("FlowState Break Complete! ☕", {
+            body: "Great recovery! Ready to start another focus block?",
+            icon: "/favicon.ico",
+          });
+        } catch {
+          // ignore
+        }
+      }
     }
 
     setTimeout(() => {
@@ -753,6 +839,8 @@ export function PomodoroTimer({
   };
 
   useEffect(() => {
+    let completionTimeout: NodeJS.Timeout | null = null;
+
     const tick = () => {
       const savedRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
       const savedTargetEndTime = localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
@@ -762,6 +850,15 @@ export function PomodoroTimer({
         const targetEndTime = Number(savedTargetEndTime);
         const now = Date.now();
         const left = Math.max(0, Math.ceil((targetEndTime - now) / 1000));
+
+        // Schedule exact timeout to fire completion at exactly 0:00 without delay
+        if (left > 0 && targetEndTime > now) {
+          const exactMs = targetEndTime - now;
+          if (completionTimeout) clearTimeout(completionTimeout);
+          completionTimeout = setTimeout(() => {
+            tick();
+          }, exactMs);
+        }
 
         // Low time notification trigger (2 mins = 120s, 1 min = 60s)
         if (left === 120 || left === 60) {
@@ -781,6 +878,7 @@ export function PomodoroTimer({
         }
 
         if (left <= 0) {
+          if (completionTimeout) clearTimeout(completionTimeout);
           handleTimerCompletion(savedMode);
         } else {
           setTimeLeft(left);
@@ -790,16 +888,106 @@ export function PomodoroTimer({
       }
     };
 
+    tick();
+
     const interval = setInterval(tick, 1000);
     window.addEventListener("focus", tick);
     window.addEventListener("visibilitychange", tick);
 
+    // Dedicated Worker to avoid background tab timer throttling
+    let worker: Worker | null = null;
+    let workerBlobUrl: string | null = null;
+    try {
+      if (typeof window !== "undefined" && typeof Worker !== "undefined") {
+        const blob = new Blob(
+          [
+            `let timerId = null;
+             self.onmessage = function(e) {
+               if (e.data === 'start') {
+                 if (!timerId) {
+                   timerId = setInterval(function() {
+                     self.postMessage('tick');
+                   }, 1000);
+                 }
+               } else if (e.data === 'stop') {
+                 if (timerId) {
+                   clearInterval(timerId);
+                   timerId = null;
+                 }
+               }
+             };`,
+          ],
+          { type: "application/javascript" }
+        );
+        workerBlobUrl = URL.createObjectURL(blob);
+        worker = new Worker(workerBlobUrl);
+        worker.onmessage = () => {
+          tick();
+        };
+        worker.postMessage("start");
+      }
+    } catch {
+      // Worker fallback
+    }
+
     return () => {
       clearInterval(interval);
+      if (completionTimeout) clearTimeout(completionTimeout);
+      if (worker) {
+        worker.postMessage("stop");
+        worker.terminate();
+      }
+      if (workerBlobUrl) {
+        URL.revokeObjectURL(workerBlobUrl);
+      }
       window.removeEventListener("focus", tick);
       window.removeEventListener("visibilitychange", tick);
     };
-  }, [handleTimerCompletion, setTimerActive, setTimerTime]);
+  }, [formatTime, handleTimerCompletion, setTimerActive, setTimerTime]);
+
+  // Listen for visibilitychange and focus to show pending celebration upon return
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const checkPendingCelebration = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+
+      const isPending = localStorage.getItem("pending_celebration");
+      if (!isPending) return;
+
+      // Clear the pending flag immediately so it does not trigger again
+      localStorage.removeItem("pending_celebration");
+
+      let dur = customFocusMins || 25;
+      const pendingDur = localStorage.getItem("pending_celebration_duration");
+      if (pendingDur) {
+        const parsed = parseInt(pendingDur, 10);
+        if (!isNaN(parsed) && parsed > 0) dur = parsed;
+        localStorage.removeItem("pending_celebration_duration");
+      } else {
+        const lastSession = localStorage.getItem("flowstate_last_completed_session_duration");
+        if (lastSession) {
+          const parsed = parseInt(lastSession, 10);
+          if (!isNaN(parsed) && parsed > 0) dur = parsed;
+        }
+      }
+
+      setCelebrationDuration(dur);
+      setCelebrationEndTime(Date.now());
+      setShowCelebration(true);
+    };
+
+    // Check immediately on mount in case user returned or reloaded
+    checkPendingCelebration();
+
+    document.addEventListener("visibilitychange", checkPendingCelebration);
+    window.addEventListener("focus", checkPendingCelebration);
+
+    return () => {
+      document.removeEventListener("visibilitychange", checkPendingCelebration);
+      window.removeEventListener("focus", checkPendingCelebration);
+    };
+  }, [customFocusMins]);
 
 
   // Minimal Tab State Monitor (for visual indicator only - no toasts or alerts)
@@ -919,6 +1107,7 @@ export function PomodoroTimer({
         if (!isPausedMidSession || !sessionStartTimeRef.current) {
           sessionStartTimeRef.current = now;
           localStorage.setItem(STORAGE_KEY_SESSION_START_TIME, String(now));
+          localStorage.setItem("flowstate_current_session_duration", String(customFocusMins));
         }
         console.log('[FlowState] Broadcasting LOCKDOWN_START');
         const { allowlistDomains: currentAllowed, blockedPaths: currentBlocked } = getSavedAllowlistSettings();
@@ -981,6 +1170,7 @@ export function PomodoroTimer({
       sessionStartTimeRef.current = now;
       if (typeof window !== "undefined") {
         localStorage.setItem(STORAGE_KEY_SESSION_START_TIME, String(now));
+        localStorage.setItem("flowstate_current_session_duration", String(customFocusMins));
       }
 
       // 3. Broadcast FLOWSTATE_LOCKDOWN_START with the new allowlistDomains and blockedPaths
@@ -1059,12 +1249,20 @@ export function PomodoroTimer({
   // Celebration Action: 'Start Another Session' (resets timer to focus mode)
   const handleStartAnotherSession = useCallback(() => {
     setShowCelebration(false);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("pending_celebration");
+      localStorage.removeItem("pending_celebration_duration");
+    }
     applyModeChange("focus");
   }, [applyModeChange]);
 
   // Celebration Action: 'Take a Break' (switches to break mode)
   const handleTakeBreak = useCallback(() => {
     setShowCelebration(false);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("pending_celebration");
+      localStorage.removeItem("pending_celebration_duration");
+    }
     const breakMode: TimerMode =
       completedSessions % 4 === 0 && completedSessions > 0 ? "longBreak" : "shortBreak";
     applyModeChange(breakMode);
@@ -1156,6 +1354,7 @@ export function PomodoroTimer({
         sessionStartTimeRef.current = now;
         if (typeof window !== "undefined") {
           localStorage.setItem(STORAGE_KEY_SESSION_START_TIME, String(now));
+          localStorage.setItem("flowstate_current_session_duration", String(customFocusMins));
         }
       }
       console.log('[FlowState] Broadcasting LOCKDOWN_START');
@@ -2108,7 +2307,13 @@ export function PomodoroTimer({
         endTime={celebrationEndTime}
         onStartAnother={handleStartAnotherSession}
         onTakeBreak={handleTakeBreak}
-        onClose={() => setShowCelebration(false)}
+        onClose={() => {
+          setShowCelebration(false);
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("pending_celebration");
+            localStorage.removeItem("pending_celebration_duration");
+          }
+        }}
       />
 
       {/* Blueprint Locked Success Toast */}

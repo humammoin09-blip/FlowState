@@ -106,20 +106,27 @@ export function resolveCompletedSessionDuration({
     return Math.round(durationMinutes);
   }
 
-  // 2. Elapsed duration from startTime and endTime
-  if (startTime && endTime) {
-    const startMs = typeof startTime === "number" ? startTime : new Date(startTime).getTime();
-    const endMs = typeof endTime === "number" ? endTime : new Date(endTime).getTime();
-    if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
-      const elapsedMinutes = Math.round((endMs - startMs) / (60 * 1000));
-      if (elapsedMinutes > 0) {
-        return elapsedMinutes;
-      }
-    }
-  }
-
-  // 3. Check localStorage for session logs or custom focus duration
+  // 2. Check pending celebration and stored durations in localStorage
   if (typeof window !== "undefined") {
+    const pendingDur = localStorage.getItem("pending_celebration_duration");
+    if (pendingDur) {
+      const parsed = parseInt(pendingDur, 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+
+    try {
+      const pending = localStorage.getItem("pending_celebration");
+      if (pending) {
+        const parsed = JSON.parse(pending);
+        if (parsed && typeof parsed === "object" && parsed.duration) {
+          const val = Number(parsed.duration);
+          if (!isNaN(val) && val > 0) return Math.round(val);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     const lastSessionDur = localStorage.getItem("flowstate_last_completed_session_duration");
     if (lastSessionDur) {
       const parsed = parseInt(lastSessionDur, 10);
@@ -128,7 +135,8 @@ export function resolveCompletedSessionDuration({
 
     const customFocusDur =
       localStorage.getItem("flowstate_pomodoro_focus_duration_mins") ||
-      localStorage.getItem("flowstate_custom_focus_duration");
+      localStorage.getItem("flowstate_custom_focus_duration") ||
+      localStorage.getItem("flowstate_current_session_duration");
     if (customFocusDur) {
       const parsed = parseInt(customFocusDur, 10);
       if (!isNaN(parsed) && parsed > 0) return parsed;
@@ -148,6 +156,18 @@ export function resolveCompletedSessionDuration({
       }
     } catch {
       // ignore
+    }
+  }
+
+  // 3. Elapsed duration from startTime and endTime
+  if (startTime && endTime) {
+    const startMs = typeof startTime === "number" ? startTime : new Date(startTime).getTime();
+    const endMs = typeof endTime === "number" ? endTime : new Date(endTime).getTime();
+    if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+      const elapsedMinutes = Math.round((endMs - startMs) / (60 * 1000));
+      if (elapsedMinutes > 0) {
+        return elapsedMinutes;
+      }
     }
   }
 
@@ -294,7 +314,7 @@ export function SessionCompleteCelebration({
               </h2>
 
               <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-md mx-auto">
-                Session Complete! 🎉 You added{" "}
+                You added{" "}
                 <span className="text-emerald-300 font-extrabold font-mono underline decoration-emerald-500/50 decoration-2 underline-offset-4">
                   +{dynamicDuration} minutes
                 </span>{" "}
