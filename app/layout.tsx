@@ -20,6 +20,13 @@ export const metadata: Metadata = {
   title: "FlowState — Deep Work & Productivity Dashboard",
   description:
     "Ultra-modern OLED dark theme dashboard for deep focus, task management, and consistency tracking.",
+  
+  
+  verification: {
+    google: "etAOPfp7BR3W97U_LhV1VT1mkaHs102fNJ9akPRSvB4",
+  },
+  
+
   openGraph: {
     title: "FlowState — Deep Work & Productivity Dashboard",
     description:
@@ -54,4 +61,3 @@ export default function RootLayout({
     </html>
   );
 }
-
