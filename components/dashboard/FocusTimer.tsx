@@ -9,7 +9,8 @@ import { PanicButton } from "@/components/PanicButton";
 import { PanicInterventionModal } from "@/components/PanicInterventionModal";
 
 const FOCUS_SECONDS = 25 * 60;
-const STORAGE_KEY_END_TIME = "flowstate_timer_end_time";
+const STORAGE_KEY_END_TIME = "flowstate_timer_end";
+const STORAGE_KEY_LEGACY_END_TIME = "flowstate_timer_end_time";
 const STORAGE_KEY_RUNNING = "flowstate_timer_running";
 const STORAGE_KEY_REMAINING = "flowstate_timer_remaining";
 
@@ -30,7 +31,9 @@ export function FocusTimer({ startOnMount = false }: FocusTimerProps) {
   useEffect(() => {
     const syncState = () => {
       const savedRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
-      const savedEndTime = localStorage.getItem(STORAGE_KEY_END_TIME);
+      const savedEndTime =
+        localStorage.getItem(STORAGE_KEY_END_TIME) ||
+        localStorage.getItem(STORAGE_KEY_LEGACY_END_TIME);
       const savedRemaining = localStorage.getItem(STORAGE_KEY_REMAINING);
 
       if (savedRunning && savedEndTime) {
@@ -73,7 +76,9 @@ export function FocusTimer({ startOnMount = false }: FocusTimerProps) {
   const toggleTimer = () => {
     if (running) {
       // Pause
-      const savedEndTime = localStorage.getItem(STORAGE_KEY_END_TIME);
+      const savedEndTime =
+        localStorage.getItem(STORAGE_KEY_END_TIME) ||
+        localStorage.getItem(STORAGE_KEY_LEGACY_END_TIME);
       let left = remaining;
       if (savedEndTime) {
         left = Math.max(0, Math.ceil((Number(savedEndTime) - Date.now()) / 1000));
@@ -106,7 +111,9 @@ export function FocusTimer({ startOnMount = false }: FocusTimerProps) {
   const handlePanicTrigger = useCallback(() => {
     // Pause timer
     if (running) {
-      const savedEndTime = localStorage.getItem(STORAGE_KEY_END_TIME);
+      const savedEndTime =
+        localStorage.getItem(STORAGE_KEY_END_TIME) ||
+        localStorage.getItem(STORAGE_KEY_LEGACY_END_TIME);
       let left = remaining;
       if (savedEndTime) {
         left = Math.max(0, Math.ceil((Number(savedEndTime) - Date.now()) / 1000));

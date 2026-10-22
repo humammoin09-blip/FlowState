@@ -18,6 +18,10 @@ import {
   isExtensionInstalled,
   ExtensionRequiredModal,
 } from "@/components/InstallExtensionBanner";
+import { SaveProgressBanner } from "@/components/SaveProgressBanner";
+import { AuthModal } from "@/components/AuthModal";
+import { Footer } from "@/components/Footer";
+import { migrateGuestDataToAuthenticatedUser } from "@/lib/auth-service";
 import { WelcomeModal, STORAGE_KEY_WELCOME_SEEN } from "@/components/WelcomeModal";
 import { evaluateStreakStatus, calculateConsistencyAnalytics } from "@/lib/discipline-service";
 import { checkAndSendEveningStreakAlert } from "@/lib/streak-protection";
@@ -59,6 +63,7 @@ export default function FlowStateDashboard() {
   const [dailyGoal, setDailyGoal] = useState<number>(6);
   const [userAvatar, setUserAvatar] = useState<string>("");
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [extensionRequiredModalOpen, setExtensionRequiredModalOpen] = useState<boolean>(false);
   const [welcomeForceState, setWelcomeForceState] = useState<boolean | null>(null);
   const isWelcomeDismissed = useSyncExternalStore(
@@ -101,6 +106,62 @@ export default function FlowStateDashboard() {
     window.addEventListener("flowstate_show_extension_required", handleReq);
     return () => {
       window.removeEventListener("flowstate_show_extension_required", handleReq);
+    };
+  }, []);
+
+  // Listen for global auth modal requests & auth state changes
+  useEffect(() => {
+    const handleOpenAuth = () => setIsAuthModalOpen(true);
+    window.addEventListener("flowstate_open_auth_modal", handleOpenAuth);
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if ((event === "SIGNED_IN" || event === "USER_UPDATED") && session?.user) {
+        const guestId =
+          typeof window !== "undefined"
+            ? localStorage.getItem("flowstate_current_guest_id") ||
+              localStorage.getItem("flowstate_active_user_id")
+            : null;
+
+        if (guestId && guestId.startsWith("guest_") && guestId !== session.user.id) {
+          await migrateGuestDataToAuthenticatedUser(guestId, session.user.id);
+        }
+
+        const profile = await resolveActiveUserProfile();
+        setUserName(profile.name);
+        setUserTitle(profile.title);
+        setUserAvatar(profile.avatar);
+        setDailyGoal(profile.dailyGoal);
+        fetchAnalyticsAndStreak();
+        fetchDashboardTasks();
+      } else if (event === "SIGNED_OUT") {
+        const profile = await resolveActiveUserProfile();
+        setUserName(profile.name);
+        setUserTitle(profile.title);
+        setUserAvatar(profile.avatar);
+        setDailyGoal(profile.dailyGoal);
+        fetchAnalyticsAndStreak();
+        fetchDashboardTasks();
+      }
+    });
+
+    const handleUserAuthenticated = async () => {
+      const profile = await resolveActiveUserProfile();
+      setUserName(profile.name);
+      setUserTitle(profile.title);
+      setUserAvatar(profile.avatar);
+      setDailyGoal(profile.dailyGoal);
+      fetchAnalyticsAndStreak();
+      fetchDashboardTasks();
+    };
+
+    window.addEventListener("flowstate_user_authenticated", handleUserAuthenticated);
+
+    return () => {
+      window.removeEventListener("flowstate_open_auth_modal", handleOpenAuth);
+      window.removeEventListener("flowstate_user_authenticated", handleUserAuthenticated);
+      subscription.unsubscribe();
     };
   }, []);
 
@@ -469,7 +530,9 @@ export default function FlowStateDashboard() {
       if (typeof window === "undefined") return;
 
       const running = localStorage.getItem("flowstate_pomodoro_running") === "true";
-      const targetEndTime = localStorage.getItem("flowstate_pomodoro_target_end_time");
+      const targetEndTime =
+        localStorage.getItem("flowstate_timer_end") ||
+        localStorage.getItem("flowstate_pomodoro_target_end_time");
       const savedRemaining = localStorage.getItem("flowstate_pomodoro_remaining");
 
       if (running && targetEndTime) {
@@ -549,6 +612,7 @@ export default function FlowStateDashboard() {
         userTitle={userTitle}
         isMobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
+        onOpenProfile={() => setIsProfileOpen(true)}
       />
 
       {/* Main Container */}
@@ -581,6 +645,11 @@ export default function FlowStateDashboard() {
                 {/* EXTENSION INSTALLATION ALERT BANNER */}
                 <motion.section variants={itemVariants}>
                   <InstallExtensionBanner />
+                </motion.section>
+
+                {/* SAVE YOUR PROGRESS (PROGRESSIVE ONBOARDING) BANNER */}
+                <motion.section variants={itemVariants}>
+                  <SaveProgressBanner onOpenAuth={() => setIsAuthModalOpen(true)} />
                 </motion.section>
 
                 {/* TOP ROW: 3 Dynamic Stat Cards (Today's Focus, Active Streak, Task Completion) */}
@@ -716,6 +785,9 @@ export default function FlowStateDashboard() {
             )}
           </AnimatePresence>
         </main>
+
+        {/* Footer with Legal Links */}
+        <Footer />
       </div>
 
       {/* Profile Setup Modal */}
@@ -730,6 +802,23 @@ export default function FlowStateDashboard() {
         setDailyGoal={(goal: string) => setDailyGoal(parseFloat(goal))}
         userAvatar={userAvatar}
         setUserAvatar={setUserAvatar}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
+      />
+
+      {/* Frictionless Progressive Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={async () => {
+          setIsAuthModalOpen(false);
+          const profile = await resolveActiveUserProfile();
+          setUserName(profile.name);
+          setUserTitle(profile.title);
+          setUserAvatar(profile.avatar);
+          setDailyGoal(profile.dailyGoal);
+          fetchAnalyticsAndStreak();
+          fetchDashboardTasks();
+        }}
       />
 
       {/* Streak Loss Psychological Quote & Alert Modal */}

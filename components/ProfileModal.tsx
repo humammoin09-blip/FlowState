@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { User, X, Check, Target, Sparkles, Database, Upload } from "lucide-react";
+import { User, X, Check, Target, Sparkles, Database, Upload, ShieldCheck, LogOut, Cloud } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 type ProfileModalProps = {
@@ -16,6 +16,7 @@ type ProfileModalProps = {
   setDailyGoal?: (goal: string) => void;
   userAvatar?: string;
   setUserAvatar?: (avatar: string) => void;
+  onOpenAuth?: () => void;
 };
 
 export function ProfileModal({
@@ -29,6 +30,7 @@ export function ProfileModal({
   setDailyGoal: setDailyGoalProp,
   userAvatar: userAvatarProp,
   setUserAvatar: setUserAvatarProp,
+  onOpenAuth,
 }: ProfileModalProps) {
   if (!isOpen) return null;
 
@@ -37,6 +39,8 @@ export function ProfileModal({
   const [dailyGoal, setDailyGoal] = useState<string>(dailyGoalProp || "6");
   const [selectedAvatar, setSelectedAvatar] = useState<string>(userAvatarProp || "🚀");
   const [saving, setSaving] = useState(false);
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
+  const [isGuest, setIsGuest] = useState(true);
 
   useEffect(() => {
     setName(userName);
@@ -45,6 +49,22 @@ export function ProfileModal({
     const savedAvatar = localStorage.getItem("flowstate_user_avatar") || userAvatarProp || "🚀";
     setDailyGoal(savedGoal);
     setSelectedAvatar(savedAvatar);
+
+    // Check auth status
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        if (data?.user) {
+          setAuthEmail(data.user.email || null);
+          setIsGuest(false);
+        } else {
+          setAuthEmail(null);
+          setIsGuest(true);
+        }
+      } catch {
+        setIsGuest(true);
+      }
+    })();
   }, [isOpen, userName, userTitle, dailyGoalProp, userAvatarProp]);
 
   const avatars = ["🚀", "⚡", "💻", "🔥", "🎯", "👑", "🦊"];
@@ -100,6 +120,17 @@ export function ProfileModal({
     reader.readAsDataURL(file);
   };
 
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+    } catch (err) {
+      console.warn("Sign out error:", err);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -130,13 +161,14 @@ export function ProfileModal({
         localStorage.setItem(`flowstate_avatar_${currentUserId}`, selectedAvatar);
       }
 
-      // If user is authenticated in Supabase, update user metadata
+      // If user is authenticated in Supabase, update auth user metadata
       if (authData?.user) {
         await supabase.auth.updateUser({
           data: {
             full_name: name,
             professional_title: title,
             avatar: selectedAvatar,
+            daily_goal: dailyGoal,
           },
         });
       }
@@ -149,20 +181,28 @@ export function ProfileModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="w-full max-w-lg p-6 rounded-3xl bg-slate-900 border border-white/10 shadow-2xl relative text-white space-y-6"
+        className="w-full max-w-lg p-6 sm:p-7 rounded-3xl bg-slate-900 border border-white/10 shadow-2xl relative text-white space-y-6 overflow-hidden"
       >
+        {/* Close Button inside motion.div */}
         <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition"
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            onClose();
+          }}
+          aria-label="Close modal"
+          className="absolute top-4 right-4 sm:top-5 sm:right-5 z-50 p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer"
         >
-          <X className="w-4 h-4" />
+          <X className="w-4 h-4 text-slate-400 hover:text-white" />
         </button>
 
+        {/* Header */}
         <div className="flex items-center gap-3">
           <div className="p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
             <User className="w-6 h-6" />
@@ -172,6 +212,49 @@ export function ProfileModal({
             <p className="text-xs text-slate-400">Customize your FlowState dashboard presence & goals</p>
           </div>
         </div>
+
+        {/* Account Sync Status Banner */}
+        {isGuest ? (
+          <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span className="text-slate-300 truncate">
+                <strong className="text-amber-300">Guest Mode:</strong> Stored locally
+              </span>
+            </div>
+            {onOpenAuth && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenAuth();
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-[11px] transition shadow-[0_0_10px_rgba(16,185,129,0.3)] shrink-0 cursor-pointer"
+              >
+                <Cloud className="w-3 h-3" />
+                <span>Save Progress</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="text-slate-300 truncate">
+                Signed in as <strong className="text-emerald-300">{authEmail}</strong>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-red-500/20 text-slate-400 hover:text-red-300 transition text-[11px] shrink-0 cursor-pointer"
+              title="Sign out of account"
+            >
+              <LogOut className="w-3 h-3" />
+              <span>Sign out</span>
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handleSave} className="space-y-4">
           {/* Avatar Selection */}
@@ -185,7 +268,7 @@ export function ProfileModal({
                   type="button"
                   key={av}
                   onClick={() => setSelectedAvatar(av)}
-                  className={`w-10 h-10 rounded-xl text-lg flex items-center justify-center border transition ${
+                  className={`w-10 h-10 rounded-xl text-lg flex items-center justify-center border transition cursor-pointer ${
                     selectedAvatar === av
                       ? "bg-emerald-500/20 border-emerald-500 text-white shadow-[0_0_10px_rgba(16,185,129,0.3)]"
                       : "bg-slate-950 border-white/10 text-slate-400 hover:border-white/30"
@@ -195,7 +278,7 @@ export function ProfileModal({
                 </button>
               ))}
 
-              {/* Local File Upload Button (type="file" with accept="image/*") */}
+              {/* Local File Upload Button */}
               <label
                 className={`w-10 h-10 rounded-xl flex items-center justify-center border transition cursor-pointer relative ${
                   isCustomImage(selectedAvatar)
@@ -213,7 +296,7 @@ export function ProfileModal({
                 <Upload className="w-4 h-4" />
               </label>
 
-              {/* If a custom image is uploaded/selected, show its preview */}
+              {/* Custom Image Preview */}
               {isCustomImage(selectedAvatar) && (
                 <div
                   className="relative w-10 h-10 rounded-xl overflow-hidden border-2 border-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]"
@@ -287,14 +370,14 @@ export function ProfileModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition"
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={saving}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs transition shadow-[0_0_15px_rgba(16,185,129,0.3)] disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs transition shadow-[0_0_15px_rgba(16,185,129,0.3)] disabled:opacity-50 cursor-pointer"
               >
                 <Check className="w-4 h-4" /> {saving ? "Saving..." : "Save Changes"}
               </button>

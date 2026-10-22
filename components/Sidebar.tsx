@@ -2,6 +2,7 @@
 
 import SoundscapePlayer from "./SoundscapePlayer";
 import React, { useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { isExtensionInstalled } from "./InstallExtensionBanner";
 import {
@@ -30,6 +31,7 @@ interface SidebarProps {
   userTitle?: string;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
+  onOpenProfile?: () => void;
 }
 
 const extensionSubscribe = (callback: () => void) => {
@@ -55,6 +57,7 @@ export function Sidebar({
   userTitle = "New User",
   isMobileOpen = false,
   onCloseMobile,
+  onOpenProfile,
 }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -225,7 +228,13 @@ export function Sidebar({
         {!isCollapsed && <SoundscapePlayer />}
 
         {/* User Mini Profile / Status Card */}
-        <div className="relative flex items-center gap-3 p-2.5 rounded-xl bg-slate-900/60 border border-white/10">
+        <div
+          onClick={onOpenProfile}
+          className={`relative flex items-center gap-3 p-2.5 rounded-xl bg-slate-900/60 border border-white/10 transition hover:bg-slate-900/90 hover:border-emerald-500/30 ${
+            onOpenProfile ? "cursor-pointer" : ""
+          }`}
+          title={onOpenProfile ? "Click to view / edit profile" : undefined}
+        >
           <div className="relative shrink-0">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-500 to-indigo-500 p-[1.5px] shadow-sm overflow-hidden">
               <div className="w-full h-full bg-slate-950 rounded-full flex items-center justify-center text-xs font-bold text-slate-300 overflow-hidden">
@@ -300,6 +309,25 @@ export function Sidebar({
             </span>
           )}
         </div>
+
+        {/* Legal Links (Desktop Sidebar) */}
+        {!isCollapsed && (
+          <div className="flex items-center justify-center gap-2 pt-1 text-[10px] text-slate-500">
+            <Link
+              href="/privacy"
+              className="hover:text-slate-300 transition-colors"
+            >
+              Privacy
+            </Link>
+            <span>•</span>
+            <Link
+              href="/terms"
+              className="hover:text-slate-300 transition-colors"
+            >
+              Terms
+            </Link>
+          </div>
+        )}
       </div>
     </motion.aside>
 
@@ -388,7 +416,16 @@ export function Sidebar({
             <div className="p-3 border-t border-white/5 space-y-3">
               <SoundscapePlayer />
 
-              <div className="relative flex items-center gap-3 p-2.5 rounded-xl bg-slate-900/60 border border-white/10">
+              <div
+                onClick={() => {
+                  if (onCloseMobile) onCloseMobile();
+                  if (onOpenProfile) onOpenProfile();
+                }}
+                className={`relative flex items-center gap-3 p-2.5 rounded-xl bg-slate-900/60 border border-white/10 transition hover:bg-slate-900/90 hover:border-emerald-500/30 ${
+                  onOpenProfile ? "cursor-pointer" : ""
+                }`}
+                title="Click to view / edit profile"
+              >
                 <div className="relative shrink-0">
                   <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-500 to-indigo-500 p-[1.5px] shadow-sm overflow-hidden">
                     <div className="w-full h-full bg-slate-950 rounded-full flex items-center justify-center text-xs font-bold text-slate-300 overflow-hidden">
@@ -450,6 +487,25 @@ export function Sidebar({
                     Install
                   </span>
                 )}
+              </div>
+
+              {/* Legal Links (Mobile Drawer) */}
+              <div className="flex items-center justify-center gap-3 pt-2 text-xs text-slate-500">
+                <Link
+                  href="/privacy"
+                  onClick={onCloseMobile}
+                  className="hover:text-slate-300 transition-colors"
+                >
+                  Privacy Policy
+                </Link>
+                <span>•</span>
+                <Link
+                  href="/terms"
+                  onClick={onCloseMobile}
+                  className="hover:text-slate-300 transition-colors"
+                >
+                  Terms of Service
+                </Link>
               </div>
             </div>
           </motion.aside>

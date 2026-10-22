@@ -69,6 +69,8 @@ interface PomodoroTimerProps {
   onFocusComplete?: () => void;
 }
 
+const STORAGE_KEY_TIMER_END = "flowstate_timer_end";
+const STORAGE_KEY_TIMER_DURATION = "flowstate_timer_duration";
 const STORAGE_KEY_TARGET_END_TIME = "flowstate_pomodoro_target_end_time";
 const STORAGE_KEY_RUNNING = "flowstate_pomodoro_running";
 const STORAGE_KEY_MODE = "flowstate_pomodoro_mode";
@@ -581,6 +583,7 @@ export function PomodoroTimer({
     setTimerActive(false);
     localStorage.setItem(STORAGE_KEY_RUNNING, "false");
     localStorage.removeItem(STORAGE_KEY_TARGET_END_TIME);
+    localStorage.removeItem(STORAGE_KEY_TIMER_END);
 
     const defaultDuration = modeDurations[currentMode];
     localStorage.setItem(STORAGE_KEY_REMAINING, String(defaultDuration));
@@ -621,7 +624,8 @@ export function PomodoroTimer({
       // Dynamic calculation: use saved setting, customFocusMins, or elapsed duration, fallback to 25
       const savedDurationSetting =
         typeof window !== "undefined"
-          ? localStorage.getItem(STORAGE_KEY_FOCUS_DURATION) ||
+          ? localStorage.getItem(STORAGE_KEY_TIMER_DURATION) ||
+            localStorage.getItem(STORAGE_KEY_FOCUS_DURATION) ||
             localStorage.getItem("flowstate_current_session_duration")
           : null;
       const configuredMins = savedDurationSetting ? parseInt(savedDurationSetting, 10) : null;
@@ -653,16 +657,15 @@ export function PomodoroTimer({
         }
       }
 
-      // Check whether user is currently away from the FlowState tab
-      const isUserAway = typeof document !== "undefined" && (document.hidden || !document.hasFocus());
+      // Check whether user is currently away from the FlowState tab (tab is hidden)
+      const isUserAway = typeof document !== "undefined" && document.hidden;
 
       // Immediate Browser Notification at 0:00:
-      // '🎉 Session Complete! You crushed [X] minutes. Open FlowState to claim your victory.'
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("flowstate_new_notification", {
             detail: {
-              title: `You completed a ${sessionMins}m session! Great job.`,
+              title: `FlowState Session Complete! You completed ${sessionMins} minutes!`,
               type: "pomodoro",
             },
           })
@@ -671,8 +674,8 @@ export function PomodoroTimer({
 
       if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
         try {
-          const notif = new Notification("🎉 Session Complete!", {
-            body: `You crushed ${sessionMins} minutes. Open FlowState to claim your victory.`,
+          const notif = new Notification("FlowState Session Complete!", {
+            body: `You completed ${sessionMins} minutes!`,
             icon: "/favicon.ico",
             tag: "flowstate-session-complete",
             requireInteraction: true,
@@ -685,6 +688,7 @@ export function PomodoroTimer({
             setShowCelebration(true);
             localStorage.removeItem("pending_celebration");
             localStorage.removeItem("pending_celebration_duration");
+            localStorage.removeItem(STORAGE_KEY_TIMER_END);
           };
         } catch {
           // ignore notification error
@@ -708,6 +712,7 @@ export function PomodoroTimer({
         if (typeof window !== "undefined") {
           localStorage.removeItem("pending_celebration");
           localStorage.removeItem("pending_celebration_duration");
+          localStorage.removeItem(STORAGE_KEY_TIMER_END);
         }
         setShowCelebration(true);
       }
@@ -791,7 +796,9 @@ export function PomodoroTimer({
 
     const savedMode = (localStorage.getItem(STORAGE_KEY_MODE) as TimerMode) || "focus";
     const savedRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
-    const savedTargetEndTime = localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
+    const savedTargetEndTime =
+      localStorage.getItem(STORAGE_KEY_TIMER_END) ||
+      localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
     const savedRemaining = localStorage.getItem(STORAGE_KEY_REMAINING);
     const savedCompleted = localStorage.getItem(STORAGE_KEY_COMPLETED_SESSIONS);
     const savedSound = localStorage.getItem("flowstate_active_soundscape");
@@ -875,12 +882,73 @@ export function PomodoroTimer({
     }
   };
 
+  // Dedicated background timer & active 0:00 exact notification trigger
   useEffect(() => {
     let completionTimeout: NodeJS.Timeout | null = null;
+    let scheduledEndTime: number | null = null;
+
+    const fireCompletionNotification = (mode: TimerMode) => {
+      const savedDuration =
+        localStorage.getItem(STORAGE_KEY_TIMER_DURATION) ||
+        localStorage.getItem("flowstate_current_session_duration") ||
+        localStorage.getItem(STORAGE_KEY_FOCUS_DURATION) ||
+        String(customFocusMins || 25);
+      const duration = parseInt(savedDuration, 10) || customFocusMins || 25;
+
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+        try {
+          const notif = new Notification("FlowState Session Complete!", {
+            body: `You completed ${duration} minutes!`,
+            icon: "/favicon.ico",
+            tag: "flowstate-session-complete",
+            requireInteraction: true,
+          });
+          notif.onclick = () => {
+            window.focus();
+            notif.close();
+            setCelebrationDuration(duration);
+            setCelebrationEndTime(Date.now());
+            setShowCelebration(true);
+            localStorage.removeItem("pending_celebration");
+            localStorage.removeItem("pending_celebration_duration");
+            localStorage.removeItem(STORAGE_KEY_TIMER_END);
+          };
+        } catch {
+          // ignore notification error
+        }
+      }
+
+      handleTimerCompletion(mode);
+    };
+
+    const scheduleExactCompletion = (targetEndTime: number, mode: TimerMode) => {
+      const now = Date.now();
+      const exactMs = targetEndTime - now;
+      if (exactMs <= 0) return;
+
+      // Do not clear and reschedule if already scheduled for this exact endTime
+      if (scheduledEndTime === targetEndTime && completionTimeout) {
+        return;
+      }
+
+      scheduledEndTime = targetEndTime;
+      if (completionTimeout) clearTimeout(completionTimeout);
+      completionTimeout = setTimeout(() => {
+        const savedRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
+        const currentEnd =
+          localStorage.getItem(STORAGE_KEY_TIMER_END) ||
+          localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
+        if (savedRunning && currentEnd && Date.now() >= Number(currentEnd)) {
+          fireCompletionNotification(mode);
+        }
+      }, exactMs);
+    };
 
     const tick = () => {
       const savedRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
-      const savedTargetEndTime = localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
+      const savedTargetEndTime =
+        localStorage.getItem(STORAGE_KEY_TIMER_END) ||
+        localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
       const savedMode = (localStorage.getItem(STORAGE_KEY_MODE) as TimerMode) || "focus";
 
       if (savedRunning && savedTargetEndTime) {
@@ -888,14 +956,8 @@ export function PomodoroTimer({
         const now = Date.now();
         const left = Math.max(0, Math.ceil((targetEndTime - now) / 1000));
 
-        // Schedule exact timeout to fire completion at exactly 0:00 without delay
-        if (left > 0 && targetEndTime > now) {
-          const exactMs = targetEndTime - now;
-          if (completionTimeout) clearTimeout(completionTimeout);
-          completionTimeout = setTimeout(() => {
-            tick();
-          }, exactMs);
-        }
+        // Schedule exact timeout to fire notification at exact 0:00 without delay
+        scheduleExactCompletion(targetEndTime, savedMode);
 
         // Low time notification trigger (2 mins = 120s, 1 min = 60s)
         if (left === 120 || left === 60) {
@@ -925,13 +987,22 @@ export function PomodoroTimer({
         }
 
         if (left <= 0) {
-          if (completionTimeout) clearTimeout(completionTimeout);
+          if (completionTimeout) {
+            clearTimeout(completionTimeout);
+            completionTimeout = null;
+          }
           handleTimerCompletion(savedMode);
         } else {
           setTimeLeft(left);
           setTimerActive(true);
           setTimerTime(formatTime(left));
         }
+      } else {
+        if (completionTimeout) {
+          clearTimeout(completionTimeout);
+          completionTimeout = null;
+        }
+        scheduledEndTime = null;
       }
     };
 
@@ -940,6 +1011,7 @@ export function PomodoroTimer({
     const interval = setInterval(tick, 1000);
     window.addEventListener("focus", tick);
     window.addEventListener("visibilitychange", tick);
+    window.addEventListener("flowstate_timer_started", tick);
 
     // Dedicated Worker to avoid background tab timer throttling
     let worker: Worker | null = null;
@@ -949,18 +1021,28 @@ export function PomodoroTimer({
         const blob = new Blob(
           [
             `let timerId = null;
+             let targetEnd = null;
              self.onmessage = function(e) {
-               if (e.data === 'start') {
-                 if (!timerId) {
-                   timerId = setInterval(function() {
-                     self.postMessage('tick');
-                   }, 1000);
-                 }
-               } else if (e.data === 'stop') {
+               if (e.data && e.data.type === 'start') {
+                 targetEnd = e.data.endTime;
+                 if (timerId) clearInterval(timerId);
+                 timerId = setInterval(function() {
+                   const now = Date.now();
+                   if (targetEnd && now >= targetEnd) {
+                     self.postMessage({ type: 'timer_complete', endTime: targetEnd });
+                     clearInterval(timerId);
+                     timerId = null;
+                     targetEnd = null;
+                   } else {
+                     self.postMessage({ type: 'tick' });
+                   }
+                 }, 1000);
+               } else if (e.data && e.data.type === 'stop') {
                  if (timerId) {
                    clearInterval(timerId);
                    timerId = null;
                  }
+                 targetEnd = null;
                }
              };`,
           ],
@@ -968,10 +1050,28 @@ export function PomodoroTimer({
         );
         workerBlobUrl = URL.createObjectURL(blob);
         worker = new Worker(workerBlobUrl);
-        worker.onmessage = () => {
-          tick();
+        worker.onmessage = (e) => {
+          if (e.data && e.data.type === "timer_complete") {
+            const savedRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
+            const currentEnd =
+              localStorage.getItem(STORAGE_KEY_TIMER_END) ||
+              localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
+            const savedMode = (localStorage.getItem(STORAGE_KEY_MODE) as TimerMode) || "focus";
+            if (savedRunning && currentEnd && Date.now() >= Number(currentEnd)) {
+              fireCompletionNotification(savedMode);
+            }
+          } else {
+            tick();
+          }
         };
-        worker.postMessage("start");
+
+        const savedRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
+        const savedTargetEndTime =
+          localStorage.getItem(STORAGE_KEY_TIMER_END) ||
+          localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
+        if (savedRunning && savedTargetEndTime) {
+          worker.postMessage({ type: "start", endTime: Number(savedTargetEndTime) });
+        }
       }
     } catch {
       // Worker fallback
@@ -981,7 +1081,7 @@ export function PomodoroTimer({
       clearInterval(interval);
       if (completionTimeout) clearTimeout(completionTimeout);
       if (worker) {
-        worker.postMessage("stop");
+        worker.postMessage({ type: "stop" });
         worker.terminate();
       }
       if (workerBlobUrl) {
@@ -989,52 +1089,101 @@ export function PomodoroTimer({
       }
       window.removeEventListener("focus", tick);
       window.removeEventListener("visibilitychange", tick);
+      window.removeEventListener("flowstate_timer_started", tick);
     };
-  }, [formatTime, handleTimerCompletion, setTimerActive, setTimerTime]);
+  }, [customFocusMins, formatTime, handleTimerCompletion, setTimerActive, setTimerTime]);
 
-  // Listen for visibilitychange and focus to show pending celebration upon return
+  // Timestamp-based Visibility Change & Timer Status Check (fires notification AND celebration upon tab return)
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const checkPendingCelebration = () => {
-      if (typeof document !== "undefined" && document.hidden) return;
+    const checkTimerStatus = () => {
+      // Only check when returning to visible tab
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
 
-      const isPending = localStorage.getItem("pending_celebration");
-      if (!isPending) return;
+      const endTime = parseInt(localStorage.getItem(STORAGE_KEY_TIMER_END) || "0", 10);
 
-      // Clear the pending flag immediately so it does not trigger again
-      localStorage.removeItem("pending_celebration");
+      if (endTime && Date.now() >= endTime) {
+        // Timer finished while away
+        const savedDuration =
+          localStorage.getItem(STORAGE_KEY_TIMER_DURATION) ||
+          localStorage.getItem("flowstate_current_session_duration") ||
+          localStorage.getItem(STORAGE_KEY_FOCUS_DURATION) ||
+          String(customFocusMins || 25);
+        const duration = parseInt(savedDuration, 10) || customFocusMins || 25;
 
-      let dur = customFocusMins || 25;
-      const pendingDur = localStorage.getItem("pending_celebration_duration");
-      if (pendingDur) {
-        const parsed = parseInt(pendingDur, 10);
-        if (!isNaN(parsed) && parsed > 0) dur = parsed;
-        localStorage.removeItem("pending_celebration_duration");
-      } else {
-        const lastSession = localStorage.getItem("flowstate_last_completed_session_duration");
-        if (lastSession) {
-          const parsed = parseInt(lastSession, 10);
-          if (!isNaN(parsed) && parsed > 0) dur = parsed;
+        // Immediate browser notification upon return
+        if ("Notification" in window && Notification.permission === "granted") {
+          try {
+            const notif = new Notification("FlowState Session Complete!", {
+              body: `You completed ${duration} minutes!`,
+              icon: "/favicon.ico",
+              tag: "flowstate-session-complete",
+            });
+            notif.onclick = () => {
+              window.focus();
+              notif.close();
+            };
+          } catch (err) {
+            console.warn("Notification error:", err);
+          }
         }
+
+        // Show celebration modal immediately
+        setCelebrationDuration(duration);
+        setCelebrationEndTime(Date.now());
+        setShowCelebration(true);
+        localStorage.removeItem("pending_celebration");
+        localStorage.removeItem("pending_celebration_duration");
+        localStorage.removeItem(STORAGE_KEY_TIMER_END);
+
+        handleTimerCompletion("focus");
+        return;
       }
 
-      setCelebrationDuration(dur);
-      setCelebrationEndTime(Date.now());
-      setShowCelebration(true);
+      // Check if celebration was saved as pending while away
+      const isPending = localStorage.getItem("pending_celebration");
+      if (isPending) {
+        localStorage.removeItem("pending_celebration");
+
+        let dur = customFocusMins || 25;
+        const pendingDur = localStorage.getItem("pending_celebration_duration");
+        if (pendingDur) {
+          const parsed = parseInt(pendingDur, 10);
+          if (!isNaN(parsed) && parsed > 0) dur = parsed;
+          localStorage.removeItem("pending_celebration_duration");
+        } else {
+          const lastSession = localStorage.getItem("flowstate_last_completed_session_duration");
+          if (lastSession) {
+            const parsed = parseInt(lastSession, 10);
+            if (!isNaN(parsed) && parsed > 0) dur = parsed;
+          }
+        }
+
+        setCelebrationDuration(dur);
+        setCelebrationEndTime(Date.now());
+        setShowCelebration(true);
+      }
     };
 
-    // Check immediately on mount in case user returned or reloaded
-    checkPendingCelebration();
+    if (typeof document !== "undefined" && document.visibilityState === "visible") {
+      checkTimerStatus();
+    }
 
-    document.addEventListener("visibilitychange", checkPendingCelebration);
-    window.addEventListener("focus", checkPendingCelebration);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        checkTimerStatus();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", checkTimerStatus);
 
     return () => {
-      document.removeEventListener("visibilitychange", checkPendingCelebration);
-      window.removeEventListener("focus", checkPendingCelebration);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", checkTimerStatus);
     };
-  }, [customFocusMins]);
+  }, [customFocusMins, handleTimerCompletion]);
 
 
   // Minimal Tab State Monitor (for visual indicator only - no toasts or alerts)
@@ -1072,13 +1221,16 @@ export function PomodoroTimer({
 
     if (isRunning) {
       // Pause
-      const savedTargetEndTime = localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
+      const savedTargetEndTime =
+      localStorage.getItem(STORAGE_KEY_TIMER_END) ||
+      localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
       let left = timeLeft;
       if (savedTargetEndTime) {
         left = Math.max(0, Math.ceil((Number(savedTargetEndTime) - Date.now()) / 1000));
       }
       localStorage.setItem(STORAGE_KEY_RUNNING, "false");
       localStorage.removeItem(STORAGE_KEY_TARGET_END_TIME);
+      localStorage.removeItem(STORAGE_KEY_TIMER_END);
       localStorage.setItem(STORAGE_KEY_REMAINING, String(left));
 
       setTimeLeft(left);
@@ -1139,11 +1291,24 @@ export function PomodoroTimer({
 
       const timeToUse = timeLeft <= 0 ? modeDurations[currentMode] : timeLeft;
       const targetEndTime = Date.now() + timeToUse * 1000;
+      const durationMins =
+        currentMode === "focus"
+          ? customFocusMins || Math.max(1, Math.round(timeToUse / 60))
+          : Math.max(1, Math.round(timeToUse / 60));
 
+      localStorage.setItem(STORAGE_KEY_TIMER_END, String(targetEndTime));
+      localStorage.setItem(STORAGE_KEY_TIMER_DURATION, String(durationMins));
       localStorage.setItem(STORAGE_KEY_TARGET_END_TIME, String(targetEndTime));
       localStorage.setItem(STORAGE_KEY_RUNNING, "true");
       localStorage.setItem(STORAGE_KEY_MODE, currentMode);
       localStorage.removeItem(STORAGE_KEY_REMAINING);
+
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("flowstate_timer_started"));
+      }
 
       setTimeLeft(timeToUse);
       setTimerActive(true);
@@ -1203,11 +1368,21 @@ export function PomodoroTimer({
       const currentMode: TimerMode = "focus";
       const timeToUse = modeDurations[currentMode];
       const targetEndTime = Date.now() + timeToUse * 1000;
+      const durationMins = customFocusMins || Math.max(1, Math.round(timeToUse / 60));
 
+      localStorage.setItem(STORAGE_KEY_TIMER_END, String(targetEndTime));
+      localStorage.setItem(STORAGE_KEY_TIMER_DURATION, String(durationMins));
       localStorage.setItem(STORAGE_KEY_TARGET_END_TIME, String(targetEndTime));
       localStorage.setItem(STORAGE_KEY_RUNNING, "true");
       localStorage.setItem(STORAGE_KEY_MODE, currentMode);
       localStorage.removeItem(STORAGE_KEY_REMAINING);
+
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("flowstate_timer_started"));
+      }
 
       setTimeLeft(timeToUse);
       setTimerActive(true);
@@ -1283,6 +1458,7 @@ export function PomodoroTimer({
       localStorage.setItem(STORAGE_KEY_MODE, newMode);
       localStorage.setItem(STORAGE_KEY_RUNNING, "false");
       localStorage.removeItem(STORAGE_KEY_TARGET_END_TIME);
+      localStorage.removeItem(STORAGE_KEY_TIMER_END);
       localStorage.setItem(STORAGE_KEY_REMAINING, String(duration));
 
       setTimeLeft(duration);
@@ -1299,6 +1475,7 @@ export function PomodoroTimer({
     if (typeof window !== "undefined") {
       localStorage.removeItem("pending_celebration");
       localStorage.removeItem("pending_celebration_duration");
+      localStorage.removeItem(STORAGE_KEY_TIMER_END);
     }
     applyModeChange("focus");
   }, [applyModeChange]);
@@ -1309,6 +1486,7 @@ export function PomodoroTimer({
     if (typeof window !== "undefined") {
       localStorage.removeItem("pending_celebration");
       localStorage.removeItem("pending_celebration_duration");
+      localStorage.removeItem(STORAGE_KEY_TIMER_END);
     }
     const breakMode: TimerMode =
       completedSessions % 4 === 0 && completedSessions > 0 ? "longBreak" : "shortBreak";
@@ -1338,6 +1516,7 @@ export function PomodoroTimer({
 
     localStorage.setItem(STORAGE_KEY_RUNNING, "false");
     localStorage.removeItem(STORAGE_KEY_TARGET_END_TIME);
+    localStorage.removeItem(STORAGE_KEY_TIMER_END);
     localStorage.setItem(STORAGE_KEY_REMAINING, String(duration));
 
     setTimeLeft(duration);
@@ -1363,13 +1542,16 @@ export function PomodoroTimer({
     // Pause timer during intervention modal
     const savedRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
     if (savedRunning) {
-      const savedTargetEndTime = localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
+      const savedTargetEndTime =
+      localStorage.getItem(STORAGE_KEY_TIMER_END) ||
+      localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
       let left = timeLeft;
       if (savedTargetEndTime) {
         left = Math.max(0, Math.ceil((Number(savedTargetEndTime) - Date.now()) / 1000));
       }
       localStorage.setItem(STORAGE_KEY_RUNNING, "false");
       localStorage.removeItem(STORAGE_KEY_TARGET_END_TIME);
+      localStorage.removeItem(STORAGE_KEY_TIMER_END);
       localStorage.setItem(STORAGE_KEY_REMAINING, String(left));
       setTimeLeft(left);
       setTimerActive(false);
@@ -1385,11 +1567,24 @@ export function PomodoroTimer({
     setShowPanicModal(false);
     const timeToUse = timeLeft <= 0 ? modeDurations[mode] : timeLeft;
     const targetEndTime = Date.now() + timeToUse * 1000;
+    const durationMins =
+      mode === "focus"
+        ? customFocusMins || Math.max(1, Math.round(timeToUse / 60))
+        : Math.max(1, Math.round(timeToUse / 60));
 
+    localStorage.setItem(STORAGE_KEY_TIMER_END, String(targetEndTime));
+    localStorage.setItem(STORAGE_KEY_TIMER_DURATION, String(durationMins));
     localStorage.setItem(STORAGE_KEY_TARGET_END_TIME, String(targetEndTime));
     localStorage.setItem(STORAGE_KEY_RUNNING, "true");
     localStorage.setItem(STORAGE_KEY_MODE, mode);
     localStorage.removeItem(STORAGE_KEY_REMAINING);
+
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("flowstate_timer_started"));
+    }
 
     setTimeLeft(timeToUse);
     setTimerActive(true);
@@ -1877,7 +2072,7 @@ export function PomodoroTimer({
                 <span className="font-mono text-emerald-400 font-bold">{customFocusMins} minutes</span>
               </div>
               <div className="flex items-center gap-2">
-                {[15, 20, 25, 40, 50, 60].map((mins) => (
+                {[2, 15, 20, 25, 40, 50, 60].map((mins) => (
                   <button
                     key={mins}
                     onClick={() => handleSetCustomFocus(mins)}
@@ -1894,9 +2089,9 @@ export function PomodoroTimer({
               <div className="flex items-center gap-2 pt-1">
                 <input
                   type="range"
-                  min="5"
+                  min="1"
                   max="90"
-                  step="5"
+                  step="1"
                   value={customFocusMins}
                   onChange={(e) => handleSetCustomFocus(Number(e.target.value))}
                   className="w-full accent-emerald-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg appearance-none"
@@ -2359,6 +2554,7 @@ export function PomodoroTimer({
           if (typeof window !== "undefined") {
             localStorage.removeItem("pending_celebration");
             localStorage.removeItem("pending_celebration_duration");
+            localStorage.removeItem(STORAGE_KEY_TIMER_END);
           }
         }}
       />

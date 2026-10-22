@@ -230,7 +230,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       const now = Date.now();
 
       // 1. Pomodoro Timer Checking
-      const pomodoroTargetEnd = localStorage.getItem("flowstate_pomodoro_target_end_time");
+      const pomodoroTargetEnd =
+        localStorage.getItem("flowstate_timer_end") ||
+        localStorage.getItem("flowstate_pomodoro_target_end_time");
       const pomodoroRunning = localStorage.getItem("flowstate_pomodoro_running") === "true";
       const pomodoroMode = (localStorage.getItem("flowstate_pomodoro_mode") as NotificationType) || "pomodoro";
 
