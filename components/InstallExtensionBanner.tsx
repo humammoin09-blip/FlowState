@@ -115,7 +115,11 @@ export function InstallExtensionBanner({ className = "" }: InstallExtensionBanne
     };
   }, [checkStatus]);
 
-  const handleDismiss = () => {
+  const handleDismiss = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     setIsDismissed(true);
     try {
       localStorage.setItem(STORAGE_KEY_BANNER_DISMISSED, "true");

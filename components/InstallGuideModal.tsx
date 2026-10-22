@@ -61,18 +61,23 @@ export function InstallGuideModal({ isOpen, onClose }: InstallGuideModalProps) {
             onClick={(e) => e.stopPropagation()}
             className="relative w-full max-w-xl rounded-3xl bg-slate-900/95 border border-white/10 p-6 sm:p-7 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8),0_0_25px_rgba(16,185,129,0.08)] backdrop-blur-2xl text-slate-100 z-10 overflow-hidden"
           >
+            {/* Close Button inside motion.div so it fades out and scales down together with the modal */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onClose();
+              }}
+              aria-label="Close modal"
+              className="absolute top-4 right-4 sm:top-5 sm:right-5 z-50 p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4 text-slate-400 hover:text-white" />
+            </button>
+
             {/* Ambient emerald & indigo glow in modal */}
             <div className="absolute top-0 right-1/4 w-56 h-20 bg-emerald-500/10 blur-3xl pointer-events-none" />
             <div className="absolute -bottom-10 left-10 w-44 h-24 bg-indigo-500/10 blur-3xl pointer-events-none" />
-
-            {/* Close (X) Button */}
-            <button
-              onClick={onClose}
-              aria-label="Close modal"
-              className="absolute top-5 right-5 p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
 
             {/* Header */}
             <div className="flex items-center gap-3.5 mb-6 pr-8">
