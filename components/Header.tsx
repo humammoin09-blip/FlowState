@@ -151,7 +151,7 @@ export function Header({
             </h1>
           </div>
           <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5 flex items-center gap-1.5 sm:gap-2 truncate">
-            <span>{currentDateStr || "Thursday, Sep 24"}</span>
+            <span suppressHydrationWarning>{currentDateStr || "Thursday, Sep 24"}</span>
             <span className="w-1 h-1 rounded-full bg-slate-600 flex-shrink-0" />
             <span className="text-emerald-400 font-medium truncate">
               Optimal Focus Window

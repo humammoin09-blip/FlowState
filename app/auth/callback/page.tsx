@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { migrateGuestDataToAuthenticatedUser } from "@/lib/auth-service";
+import {
+  migrateGuestDataToAuthenticatedUser,
+  forceSyncUserDataFromSupabase,
+} from "@/lib/auth-service";
 import { Loader2, ShieldCheck } from "lucide-react";
 
 export default function AuthCallbackPage() {
@@ -23,7 +26,7 @@ export default function AuthCallbackPage() {
 
         const sessionUser = data?.session?.user;
         if (sessionUser) {
-          setStatus("Migrating your focus streaks and tasks...");
+          setStatus("Syncing your focus streaks and tasks...");
           const guestId =
             typeof window !== "undefined"
               ? localStorage.getItem("flowstate_current_guest_id") ||
@@ -33,6 +36,9 @@ export default function AuthCallbackPage() {
           if (guestId && guestId.startsWith("guest_") && guestId !== sessionUser.id) {
             await migrateGuestDataToAuthenticatedUser(guestId, sessionUser.id);
           }
+
+          // Force complete re-fetch of all user data from Supabase and overwrite localStorage
+          await forceSyncUserDataFromSupabase(sessionUser.id);
         }
       } catch (err) {
         console.warn("Auth callback notice:", err);

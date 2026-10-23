@@ -1,42 +1,28 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ExternalLink, Download, X, ShieldAlert, Sparkles } from "lucide-react";
 import { InstallGuideModal } from "./InstallGuideModal";
+import {
+  isExtensionInstalled,
+  STORAGE_KEY_EXTENSION_INSTALLED,
+  pingExtension,
+  subscribeToExtension,
+} from "@/lib/extension-detector";
 
-export const STORAGE_KEY_EXTENSION_INSTALLED = "flowstate_extension_installed";
+export {
+  isExtensionInstalled,
+  STORAGE_KEY_EXTENSION_INSTALLED,
+  pingExtension,
+  subscribeToExtension,
+};
 export const STORAGE_KEY_BANNER_DISMISSED = "flowstate_extension_banner_dismissed";
 
 export const EDGE_STORE_URL =
   "https://microsoftedge.microsoft.com/addons/detail/flowstate-blocker/ofphnidnpdfbfkgakpglbjiogolfebac";
 export const CHROME_CRX_URL =
   "https://github.com/humammoin09-blip/Momentum-AI/releases/latest/download/extension.crx";
-
-/**
- * Global helper to check if FlowState extension is installed
- */
-export function isExtensionInstalled(): boolean {
-  if (typeof window === "undefined") return false;
-
-  // 1. Check local storage flag
-  if (localStorage.getItem(STORAGE_KEY_EXTENSION_INSTALLED) === "true") {
-    return true;
-  }
-
-  // 2. Check DOM attribute set by content script
-  if (
-    document.documentElement.getAttribute("data-flowstate-extension-installed") ===
-    "true"
-  ) {
-    try {
-      localStorage.setItem(STORAGE_KEY_EXTENSION_INSTALLED, "true");
-    } catch {}
-    return true;
-  }
-
-  return false;
-}
 
 export { ExtensionRequiredModal } from "./ExtensionRequiredModal";
 
@@ -46,74 +32,21 @@ interface InstallExtensionBannerProps {
 
 export function InstallExtensionBanner({ className = "" }: InstallExtensionBannerProps) {
   const [isMounted, setIsMounted] = useState<boolean>(false);
-  const [isInstalled, setIsInstalled] = useState<boolean>(false);
+  const isInstalled = useSyncExternalStore(
+    subscribeToExtension,
+    () => isExtensionInstalled(),
+    () => false
+  );
   const [isDismissed, setIsDismissed] = useState<boolean>(false);
   const [isGuideModalOpen, setIsGuideModalOpen] = useState<boolean>(false);
 
-  const checkStatus = useCallback(() => {
-    if (typeof window === "undefined") return;
-
-    // 1. Check local storage flags
-    const installed = isExtensionInstalled();
-    const dismissed = localStorage.getItem(STORAGE_KEY_BANNER_DISMISSED) === "true";
-
-    if (installed) setIsInstalled(true);
-    if (dismissed) setIsDismissed(true);
-  }, []);
-
   useEffect(() => {
     setIsMounted(true);
-    checkStatus();
-
-    // 3. Listen for window.postMessage from extension content script
-    const handleMessage = (event: MessageEvent) => {
-      if (!event.data) return;
-
-      const { source, type } = event.data;
-      if (
-        source === "flowstate-extension" ||
-        type === "FLOWSTATE_EXTENSION_HEARTBEAT" ||
-        type === "FLOWSTATE_EXTENSION_PONG"
-      ) {
-        setIsInstalled(true);
-        try {
-          localStorage.setItem(STORAGE_KEY_EXTENSION_INSTALLED, "true");
-        } catch {}
-      }
-    };
-
-    window.addEventListener("message", handleMessage);
-
-    // 4. Actively ping extension bridge to verify presence
-    try {
-      window.postMessage(
-        {
-          source: "flowstate-focus-chamber",
-          type: "FLOWSTATE_PING_EXTENSION",
-        },
-        "*"
-      );
-    } catch {}
-
-    // Check again after a short delay in case extension content script injects async
-    const timer = setTimeout(() => {
-      checkStatus();
-      try {
-        window.postMessage(
-          {
-            source: "flowstate-focus-chamber",
-            type: "FLOWSTATE_PING_EXTENSION",
-          },
-          "*"
-        );
-      } catch {}
-    }, 1000);
-
-    return () => {
-      window.removeEventListener("message", handleMessage);
-      clearTimeout(timer);
-    };
-  }, [checkStatus]);
+    if (typeof window !== "undefined") {
+      const dismissed = localStorage.getItem(STORAGE_KEY_BANNER_DISMISSED) === "true";
+      if (dismissed) setIsDismissed(true);
+    }
+  }, []);
 
   const handleDismiss = (e?: React.MouseEvent) => {
     if (e) {

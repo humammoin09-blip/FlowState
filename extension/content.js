@@ -24,8 +24,8 @@ window.postMessage(
 );
 
 window.addEventListener("message", (event) => {
-  // Only accept messages with FlowState source identifier
-  if (!event.data || event.data.source !== "flowstate-focus-chamber") return;
+  // Accept messages with FlowState source identifier or direct extension ping
+  if (!event.data || (event.data.source !== "flowstate-focus-chamber" && event.data.type !== "FLOWSTATE_PING_EXTENSION")) return;
 
   const { type, payload } = event.data;
   console.log("[FlowState content.js] Received postMessage from web app:", type, payload);

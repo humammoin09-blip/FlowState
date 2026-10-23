@@ -21,7 +21,10 @@ import {
 import { SaveProgressBanner } from "@/components/SaveProgressBanner";
 import { AuthModal } from "@/components/AuthModal";
 import { Footer } from "@/components/Footer";
-import { migrateGuestDataToAuthenticatedUser } from "@/lib/auth-service";
+import {
+  migrateGuestDataToAuthenticatedUser,
+  forceSyncUserDataFromSupabase,
+} from "@/lib/auth-service";
 import { WelcomeModal, STORAGE_KEY_WELCOME_SEEN } from "@/components/WelcomeModal";
 import { evaluateStreakStatus, calculateConsistencyAnalytics } from "@/lib/discipline-service";
 import { checkAndSendEveningStreakAlert } from "@/lib/streak-protection";
@@ -118,42 +121,71 @@ export default function FlowStateDashboard() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if ((event === "SIGNED_IN" || event === "USER_UPDATED") && session?.user) {
-        const guestId =
-          typeof window !== "undefined"
-            ? localStorage.getItem("flowstate_current_guest_id") ||
-              localStorage.getItem("flowstate_active_user_id")
-            : null;
+        try {
+          setStatsLoading(true);
+          const guestId =
+            typeof window !== "undefined"
+              ? localStorage.getItem("flowstate_current_guest_id") ||
+                localStorage.getItem("flowstate_active_user_id")
+              : null;
 
-        if (guestId && guestId.startsWith("guest_") && guestId !== session.user.id) {
-          await migrateGuestDataToAuthenticatedUser(guestId, session.user.id);
+          if (guestId && guestId.startsWith("guest_") && guestId !== session.user.id) {
+            await migrateGuestDataToAuthenticatedUser(guestId, session.user.id);
+          } else {
+            await forceSyncUserDataFromSupabase(session.user.id);
+          }
+
+          const profile = await resolveActiveUserProfile();
+          setUserName(profile.name);
+          setUserTitle(profile.title);
+          setUserAvatar(profile.avatar);
+          setDailyGoal(profile.dailyGoal);
+          await Promise.allSettled([
+            fetchAnalyticsAndStreak(),
+            fetchDashboardTasks(),
+          ]);
+        } catch (err) {
+          console.warn("Auth state change error:", err);
+        } finally {
+          setStatsLoading(false);
         }
-
-        const profile = await resolveActiveUserProfile();
-        setUserName(profile.name);
-        setUserTitle(profile.title);
-        setUserAvatar(profile.avatar);
-        setDailyGoal(profile.dailyGoal);
-        fetchAnalyticsAndStreak();
-        fetchDashboardTasks();
       } else if (event === "SIGNED_OUT") {
-        const profile = await resolveActiveUserProfile();
-        setUserName(profile.name);
-        setUserTitle(profile.title);
-        setUserAvatar(profile.avatar);
-        setDailyGoal(profile.dailyGoal);
-        fetchAnalyticsAndStreak();
-        fetchDashboardTasks();
+        try {
+          setStatsLoading(true);
+          const profile = await resolveActiveUserProfile();
+          setUserName(profile.name);
+          setUserTitle(profile.title);
+          setUserAvatar(profile.avatar);
+          setDailyGoal(profile.dailyGoal);
+          await Promise.allSettled([
+            fetchAnalyticsAndStreak(),
+            fetchDashboardTasks(),
+          ]);
+        } catch (err) {
+          console.warn("Sign out notice:", err);
+        } finally {
+          setStatsLoading(false);
+        }
       }
     });
 
     const handleUserAuthenticated = async () => {
-      const profile = await resolveActiveUserProfile();
-      setUserName(profile.name);
-      setUserTitle(profile.title);
-      setUserAvatar(profile.avatar);
-      setDailyGoal(profile.dailyGoal);
-      fetchAnalyticsAndStreak();
-      fetchDashboardTasks();
+      try {
+        setStatsLoading(true);
+        const profile = await resolveActiveUserProfile();
+        setUserName(profile.name);
+        setUserTitle(profile.title);
+        setUserAvatar(profile.avatar);
+        setDailyGoal(profile.dailyGoal);
+        await Promise.allSettled([
+          fetchAnalyticsAndStreak(),
+          fetchDashboardTasks(),
+        ]);
+      } catch (err) {
+        console.warn("User authenticated event handler notice:", err);
+      } finally {
+        setStatsLoading(false);
+      }
     };
 
     window.addEventListener("flowstate_user_authenticated", handleUserAuthenticated);
@@ -167,29 +199,44 @@ export default function FlowStateDashboard() {
 
   // Load profile from Supabase Auth or local user profile on mount
   useEffect(() => {
+    let mounted = true;
     (async () => {
-      const profile = await resolveActiveUserProfile();
-      setUserName(profile.name);
-      setUserTitle(profile.title);
-      setUserAvatar(profile.avatar);
-      setDailyGoal(profile.dailyGoal);
+      try {
+        setStatsLoading(true);
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.user) {
+          // Force complete re-fetch from Supabase on session restoration
+          await forceSyncUserDataFromSupabase(sessionData.session.user.id);
+        }
+      } catch (err) {
+        console.warn("Session restore sync notice:", err);
+      }
 
-      if (typeof window !== "undefined") {
-        const cachedSessions =
-          localStorage.getItem(`flowstate_cached_focus_sessions_${profile.id}`) ||
-          localStorage.getItem("flowstate_cached_focus_sessions");
-        if (cachedSessions) {
-          try {
-            const parsed = JSON.parse(cachedSessions) as Array<{ duration_minutes?: number; created_at?: string; mode?: string | null }>;
-            const userFiltered = filterSessionsByUserId(parsed, profile.id);
-            const analytics = calculateConsistencyAnalytics(userFiltered);
-            setFocusHours(analytics.todayHours);
-          } catch {
-            // ignore
-          }
+      if (!mounted) return;
+
+      try {
+        const profile = await resolveActiveUserProfile();
+        setUserName(profile.name);
+        setUserTitle(profile.title);
+        setUserAvatar(profile.avatar);
+        setDailyGoal(profile.dailyGoal);
+
+        await Promise.allSettled([
+          fetchAnalyticsAndStreak(),
+          fetchDashboardTasks(),
+        ]);
+      } catch (err) {
+        console.warn("Dashboard initial load notice:", err);
+      } finally {
+        if (mounted) {
+          setStatsLoading(false);
         }
       }
     })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const [statsLoading, setStatsLoading] = useState<boolean>(true);

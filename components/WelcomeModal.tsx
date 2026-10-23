@@ -17,19 +17,12 @@ import {
 import {
   EDGE_STORE_URL,
   isExtensionInstalled,
+  subscribeToExtension,
 } from "./InstallExtensionBanner";
 
 export const STORAGE_KEY_WELCOME_SEEN = "flowstate_welcome_modal_seen";
 
 const emptySubscribe = () => () => {};
-
-const extensionSubscribe = (callback: () => void) => {
-  if (typeof window === "undefined") return () => {};
-  window.addEventListener("message", callback);
-  return () => {
-    window.removeEventListener("message", callback);
-  };
-};
 
 interface WelcomeModalProps {
   isOpen: boolean;
@@ -51,7 +44,7 @@ export function WelcomeModal({
   );
 
   const extensionInstalled = useSyncExternalStore(
-    extensionSubscribe,
+    subscribeToExtension,
     () => isExtensionInstalled(),
     () => false
   );

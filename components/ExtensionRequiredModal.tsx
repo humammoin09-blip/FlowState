@@ -80,9 +80,6 @@ export function ExtensionRequiredModal({
         type === "FLOWSTATE_EXTENSION_PONG"
       ) {
         detectedRef.current = true;
-        try {
-          localStorage.setItem(STORAGE_KEY_EXTENSION_INSTALLED, "true");
-        } catch {}
 
         // If not currently in a manual verification check loop, close automatically
         if (!isCheckingRef.current) {
@@ -153,9 +150,6 @@ export function ExtensionRequiredModal({
 
       if (isDetected) {
         setVerified(true);
-        try {
-          localStorage.setItem(STORAGE_KEY_EXTENSION_INSTALLED, "true");
-        } catch {}
         // Automatically close modal after brief visual confirmation
         autoCloseTimeoutRef.current = setTimeout(() => {
           if (onSuccess) onSuccess();

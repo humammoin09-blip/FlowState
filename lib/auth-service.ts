@@ -5,8 +5,17 @@ import {
   decodeTaskDuration,
   encodeTaskDuration,
   resolveActiveUserProfile,
+  filterSessionsByUserId,
+  filterTasksByUserId,
 } from "./user-service";
-import { STORAGE_KEYS, getLocalDateString } from "./streak-service";
+import {
+  STORAGE_KEYS,
+  getLocalDateString,
+  calculateStreakState,
+  getUserStreakKey,
+  FocusSessionRecord,
+  UserStreakData,
+} from "./streak-service";
 
 export interface MigrationResult {
   success: boolean;
@@ -172,37 +181,7 @@ export async function migrateGuestDataToAuthenticatedUser(
     console.warn("Notice: focus_blueprints migration error:", err);
   }
 
-  // 4. Migrate user_settings (streaks) in Supabase
-  try {
-    const { data: guestSettings } = await supabase
-      .from("user_settings")
-      .select("*")
-      .eq("id", guestId)
-      .maybeSingle();
-
-    if (guestSettings) {
-      await supabase.from("user_settings").upsert({
-        id: authUserId,
-        user_id: authUserId,
-        current_streak: guestSettings.current_streak,
-        max_streak: guestSettings.max_streak,
-        last_active_date: guestSettings.last_active_date,
-        last_break_date: guestSettings.last_break_date,
-        last_streak_saver_used: guestSettings.last_streak_saver_used,
-        updated_at: new Date().toISOString(),
-      });
-      result.migratedSettings = true;
-
-      // Clean up previous guest record in Supabase
-      try {
-        await supabase.from("user_settings").delete().eq("id", guestId);
-      } catch {}
-    }
-  } catch (err) {
-    console.warn("Notice: user_settings migration error:", err);
-  }
-
-  // 5. Migrate LocalStorage Keys to New Authenticated User ID
+  // 4. Migrate Profile Metadata (if present)
   if (typeof window !== "undefined") {
     // Set active user ID
     localStorage.setItem("flowstate_active_user_id", authUserId);
@@ -230,64 +209,11 @@ export async function migrateGuestDataToAuthenticatedUser(
     if (goal) localStorage.setItem(`flowstate_goal_${authUserId}`, goal);
     if (createdAt) localStorage.setItem(`flowstate_account_created_at_${authUserId}`, createdAt);
 
-    // Cached sessions
-    const cachedSessions =
-      localStorage.getItem(`flowstate_cached_focus_sessions_${guestId}`) ||
-      localStorage.getItem("flowstate_cached_focus_sessions");
-    if (cachedSessions) {
-      try {
-        const parsed = JSON.parse(cachedSessions);
-        if (Array.isArray(parsed)) {
-          const migrated = parsed.map((s) => ({
-            ...s,
-            mode: s.mode ? `${decodeSessionMode(s.mode)}::uid:${authUserId}` : s.mode,
-          }));
-          localStorage.setItem(`flowstate_cached_focus_sessions_${authUserId}`, JSON.stringify(migrated));
-          localStorage.setItem("flowstate_cached_focus_sessions", JSON.stringify(migrated));
-        }
-      } catch {}
-    }
-
-    // Cached tasks
-    const cachedTasks =
-      localStorage.getItem(`flowstate_cached_tasks_${guestId}`) ||
-      localStorage.getItem("flowstate_cached_tasks");
-    if (cachedTasks) {
-      try {
-        const parsed = JSON.parse(cachedTasks);
-        if (Array.isArray(parsed)) {
-          const migrated = parsed.map((t) => ({
-            ...t,
-            duration: t.duration ? `${decodeTaskDuration(t.duration)}::uid:${authUserId}` : t.duration,
-          }));
-          localStorage.setItem(`flowstate_cached_tasks_${authUserId}`, JSON.stringify(migrated));
-          localStorage.setItem("flowstate_cached_tasks", JSON.stringify(migrated));
-        }
-      } catch {}
-    }
-
-    // Streak metadata keys
-    const streakKeys = [
-      STORAGE_KEYS.CURRENT_STREAK,
-      STORAGE_KEYS.MAX_STREAK,
-      STORAGE_KEYS.LAST_ACTIVE_DATE,
-      STORAGE_KEYS.LAST_BREAK_DATE,
-      STORAGE_KEYS.LAST_STREAK_SAVER_USED,
-      STORAGE_KEYS.PREVIOUS_STREAK,
-      STORAGE_KEYS.IS_STREAK_BROKEN,
-    ];
-    for (const key of streakKeys) {
-      const val = localStorage.getItem(`${key}_${guestId}`) || localStorage.getItem(key);
-      if (val !== null) {
-        localStorage.setItem(`${key}_${authUserId}`, val);
-      }
-    }
-
-    // Mark as migrated
+    // Mark as migrated for this guest -> auth user pair
     localStorage.setItem(migrationKey, "true");
   }
 
-  // 6. Update user metadata on Supabase auth with profile values
+  // 5. Update user metadata on Supabase auth with profile values
   try {
     const savedName =
       (typeof window !== "undefined" && localStorage.getItem(`flowstate_name_${authUserId}`)) ||
@@ -315,15 +241,138 @@ export async function migrateGuestDataToAuthenticatedUser(
     console.warn("Notice: Updating auth user metadata during migration:", err);
   }
 
-  // Dispatch a global event so UI components refresh their data immediately
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent("flowstate_user_authenticated", {
-        detail: { guestId, authUserId },
-      })
-    );
-  }
+  // 6. Force complete re-fetch from Supabase and overwrite localStorage
+  // Ensures streak calculation strictly uses the combined focus_sessions from Supabase
+  await forceSyncUserDataFromSupabase(authUserId);
 
   console.log(`[FlowState Progressive Auth] Migration completed successfully:`, result);
   return result;
+}
+
+/**
+ * Forces a complete re-fetch of all user data (focus sessions, streak, tasks) from Supabase.
+ * Overwrites localStorage with the newly fetched Supabase data.
+ * Ensures the streak calculation strictly uses the focus_sessions from Supabase.
+ */
+export async function forceSyncUserDataFromSupabase(userId: string): Promise<{
+  sessions: any[];
+  tasks: any[];
+  streak: UserStreakData;
+}> {
+  let userSessions: any[] = [];
+  let userTasks: any[] = [];
+  let streakState: UserStreakData = calculateStreakState({ sessions: [] });
+
+  if (!userId || typeof window === "undefined") {
+    return { sessions: [], tasks: [], streak: streakState };
+  }
+
+  try {
+    console.log(`[FlowState Data Sync] Forcing complete re-fetch from Supabase for user: ${userId}`);
+
+    // 1. Ensure active user ID is set
+    localStorage.setItem("flowstate_active_user_id", userId);
+
+    // 2. Fetch all focus_sessions from Supabase
+    try {
+      const { data: allSessions, error: sessError } = await supabase
+        .from("focus_sessions")
+        .select("*")
+        .order("created_at", { ascending: true });
+
+      if (!sessError && Array.isArray(allSessions)) {
+        userSessions = filterSessionsByUserId(allSessions, userId);
+        // Overwrite localStorage with the newly fetched Supabase data
+        localStorage.setItem(`flowstate_cached_focus_sessions_${userId}`, JSON.stringify(userSessions));
+        localStorage.setItem("flowstate_cached_focus_sessions", JSON.stringify(userSessions));
+      }
+    } catch (err) {
+      console.warn("Notice: Failed fetching focus_sessions during force-sync:", err);
+    }
+
+    // 3. Fetch user_settings from Supabase for streak saver cooldown & metadata
+    let userSettings: Partial<UserStreakData> = {};
+    try {
+      const { data: settingsRow } = await supabase
+        .from("user_settings")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (settingsRow) {
+        userSettings = {
+          lastActiveDate: settingsRow.last_active_date,
+          currentStreak: settingsRow.current_streak,
+          maxStreak: settingsRow.max_streak,
+          lastBreakDate: settingsRow.last_break_date,
+          lastStreakSaverUsed: settingsRow.last_streak_saver_used,
+        };
+      }
+    } catch (err) {
+      console.warn("Notice: Failed fetching user_settings during force-sync:", err);
+    }
+
+    // 4. Strictly calculate streak using the focus_sessions from Supabase
+    streakState = calculateStreakState({
+      sessions: userSessions as FocusSessionRecord[],
+      storedData: userSettings,
+    });
+
+    // Overwrite localStorage streak keys with newly calculated Supabase streak
+    localStorage.setItem(getUserStreakKey(STORAGE_KEYS.CURRENT_STREAK, userId), String(streakState.currentStreak));
+    localStorage.setItem(STORAGE_KEYS.CURRENT_STREAK, String(streakState.currentStreak));
+
+    localStorage.setItem(getUserStreakKey(STORAGE_KEYS.MAX_STREAK, userId), String(streakState.maxStreak));
+    localStorage.setItem(STORAGE_KEYS.MAX_STREAK, String(streakState.maxStreak));
+
+    if (streakState.lastActiveDate) {
+      localStorage.setItem(getUserStreakKey(STORAGE_KEYS.LAST_ACTIVE_DATE, userId), streakState.lastActiveDate);
+      localStorage.setItem(STORAGE_KEYS.LAST_ACTIVE_DATE, streakState.lastActiveDate);
+    }
+
+    localStorage.setItem(getUserStreakKey(STORAGE_KEYS.IS_STREAK_BROKEN, userId), String(streakState.isStreakBroken));
+    localStorage.setItem(STORAGE_KEYS.IS_STREAK_BROKEN, String(streakState.isStreakBroken));
+
+    if (streakState.lastBreakDate) {
+      localStorage.setItem(getUserStreakKey(STORAGE_KEYS.LAST_BREAK_DATE, userId), streakState.lastBreakDate);
+      localStorage.setItem(STORAGE_KEYS.LAST_BREAK_DATE, streakState.lastBreakDate);
+    }
+
+    // Persist updated streak to Supabase user_settings so database is in sync with sessions
+    try {
+      await supabase.from("user_settings").upsert({
+        id: userId,
+        user_id: userId,
+        current_streak: streakState.currentStreak,
+        max_streak: streakState.maxStreak,
+        last_active_date: streakState.lastActiveDate,
+        last_break_date: streakState.lastBreakDate || null,
+        last_streak_saver_used: streakState.lastStreakSaverUsed || null,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.warn("Notice: Failed saving calculated streak to Supabase user_settings:", err);
+    }
+
+    // 5. Fetch tasks from Supabase
+    try {
+      const { data: allTasks, error: taskError } = await supabase
+        .from("tasks")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!taskError && Array.isArray(allTasks)) {
+        userTasks = filterTasksByUserId(allTasks, userId);
+        // Overwrite localStorage with newly fetched tasks from Supabase
+        localStorage.setItem(`flowstate_cached_tasks_${userId}`, JSON.stringify(userTasks));
+        localStorage.setItem("flowstate_cached_tasks", JSON.stringify(userTasks));
+      }
+    } catch (err) {
+      console.warn("Notice: Failed fetching tasks during force-sync:", err);
+    }
+  } catch (globalErr) {
+    console.error("Critical forceSyncUserDataFromSupabase error:", globalErr);
+  }
+
+  return { sessions: userSessions, tasks: userTasks, streak: streakState };
 }

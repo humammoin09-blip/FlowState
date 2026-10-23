@@ -162,6 +162,81 @@ export function calculateHistoricalMaxStreak(activeDateStrings: string[]): numbe
 }
 
 /**
+ * Calculates current consecutive streak strictly from focus sessions.
+ * Guarantees zero stale localStorage discrepancy when signing in across browsers.
+ */
+export function calculateCurrentStreakFromSessions(
+  sessions: FocusSessionRecord[],
+  currentDate: Date = new Date()
+): {
+  currentStreak: number;
+  maxStreak: number;
+  lastActiveDate: string | null;
+  daysSinceLastActive: number;
+  isStreakBroken: boolean;
+  activeDatesList: string[];
+} {
+  const activeDates = getActiveDatesFromSessions(sessions);
+  const activeDatesList = Array.from(activeDates).sort();
+
+  if (activeDatesList.length === 0) {
+    return {
+      currentStreak: 0,
+      maxStreak: 0,
+      lastActiveDate: null,
+      daysSinceLastActive: 0,
+      isStreakBroken: false,
+      activeDatesList: [],
+    };
+  }
+
+  const todayStr = getLocalDateString(currentDate);
+  const yesterdayDate = new Date(currentDate);
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterdayStr = getLocalDateString(yesterdayDate);
+
+  const lastActiveDate = activeDatesList[activeDatesList.length - 1];
+  const gap = getDayDifference(lastActiveDate, todayStr);
+  const historicalMax = calculateHistoricalMaxStreak(activeDatesList);
+
+  let currentStreak = 0;
+  let isStreakBroken = false;
+
+  if (gap === 0) {
+    // User was active today: count consecutive active days backwards from today
+    let checkDate = new Date(currentDate);
+    while (activeDates.has(getLocalDateString(checkDate))) {
+      currentStreak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+    isStreakBroken = false;
+  } else if (gap === 1) {
+    // User was active yesterday: today is ongoing, count consecutive days backwards from yesterday
+    let checkDate = new Date(yesterdayDate);
+    while (activeDates.has(getLocalDateString(checkDate))) {
+      currentStreak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+    isStreakBroken = false;
+  } else {
+    // Gap > 1 day: user missed consecutive days, streak is broken
+    currentStreak = 0;
+    isStreakBroken = true;
+  }
+
+  const maxStreak = Math.max(historicalMax, currentStreak);
+
+  return {
+    currentStreak,
+    maxStreak,
+    lastActiveDate,
+    daysSinceLastActive: Math.max(0, gap),
+    isStreakBroken,
+    activeDatesList,
+  };
+}
+
+/**
  * Checks if Streak Saver is available (allowed only once every 30 days)
  */
 export function checkStreakSaverAvailability(
@@ -183,7 +258,8 @@ export function checkStreakSaverAvailability(
 }
 
 /**
- * Evaluates streak status based on user's active days and stored settings
+ * Evaluates streak status based on user's active days and stored settings.
+ * Strictly uses focus_sessions as the authoritative source of truth.
  */
 export function calculateStreakState({
   sessions,
@@ -199,86 +275,52 @@ export function calculateStreakState({
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
   const yesterdayStr = getLocalDateString(yesterdayDate);
 
-  const activeDates = getActiveDatesFromSessions(sessions);
-  const allActiveDatesList = Array.from(activeDates).sort();
-
-  // Pick the latest active date between sessions and stored settings
-  let lastActiveDate = storedData?.lastActiveDate || null;
-  if (allActiveDatesList.length > 0) {
-    const latestSessionDate = allActiveDatesList[allActiveDatesList.length - 1];
-    if (!lastActiveDate || latestSessionDate > lastActiveDate) {
-      lastActiveDate = latestSessionDate;
-    }
-  }
-
-  const storedStreak = storedData?.currentStreak ?? 0;
-  const storedPrevStreak = storedData?.previousStreak ?? 0;
-  let maxStreak = Math.max(
-    storedData?.maxStreak ?? 0,
-    calculateHistoricalMaxStreak(allActiveDatesList)
-  );
-  let lastBreakDate = storedData?.lastBreakDate || null;
+  const fromSessions = calculateCurrentStreakFromSessions(sessions, currentDate);
   const lastStreakSaverUsed = storedData?.lastStreakSaverUsed || null;
-
   const { canUse: canUseStreakSaver, cooldownDays: streakSaverCooldownDays } =
     checkStreakSaverAvailability(lastStreakSaverUsed, todayStr);
 
-  // If user has never been active
-  if (!lastActiveDate) {
-    return {
-      currentStreak: 0,
-      maxStreak: 0,
-      lastActiveDate: null,
-      lastBreakDate: null,
-      isStreakBroken: false,
-      daysSinceLastActive: 0,
-      daysSinceLastBreak: 0,
-      lastStreakSaverUsed,
-      canUseStreakSaver,
-      previousStreak: 0,
-      streakSaverCooldownDays,
-    };
-  }
+  let currentStreak = fromSessions.currentStreak;
+  let maxStreak = Math.max(fromSessions.maxStreak, storedData?.maxStreak ?? 0);
+  let lastActiveDate = fromSessions.lastActiveDate || storedData?.lastActiveDate || null;
+  let isStreakBroken = fromSessions.isStreakBroken;
+  let daysSinceLastActive = fromSessions.daysSinceLastActive;
+  let previousStreak = storedData?.previousStreak ?? fromSessions.maxStreak;
+  let lastBreakDate = storedData?.lastBreakDate || null;
 
-  const gap = getDayDifference(lastActiveDate, todayStr);
-
-  let currentStreak = 0;
-  let isStreakBroken = false;
-  let previousStreak = storedPrevStreak;
-
-  if (gap === 0) {
-    // Gap === 0 day: same day, active today!
-    // Check if yesterday was active to calculate the streak count
-    const wasYesterdayActive = activeDates.has(yesterdayStr) || storedData?.lastActiveDate === yesterdayStr;
-    if (wasYesterdayActive && storedStreak > 0) {
-      currentStreak = storedStreak;
-    } else if (storedStreak > 0) {
-      currentStreak = storedStreak;
+  // Fallback to offline stored data only if session history is completely empty
+  if (sessions.length === 0 && storedData?.lastActiveDate) {
+    const gap = getDayDifference(storedData.lastActiveDate, todayStr);
+    if (gap === 0 || gap === 1) {
+      currentStreak = storedData.currentStreak || 1;
+      isStreakBroken = false;
+      daysSinceLastActive = gap;
     } else {
-      currentStreak = 1;
-    }
-    isStreakBroken = false;
-  } else if (gap === 1) {
-    // Gap === 1 day: yesterday was active! Streak is alive and ready to increment
-    currentStreak = storedStreak > 0 ? storedStreak : 1;
-    isStreakBroken = false;
-  } else {
-    // Gap > 1 day: user has NOT been active for 2+ consecutive days
-    // Streak is BROKEN, streak = 0
-    currentStreak = 0;
-    isStreakBroken = true;
-    previousStreak = storedStreak > 0 ? storedStreak : (storedPrevStreak || 1);
-    if (!lastBreakDate) {
-      lastBreakDate = yesterdayStr;
+      currentStreak = 0;
+      isStreakBroken = true;
+      daysSinceLastActive = gap;
+      previousStreak = storedData.currentStreak || previousStreak;
     }
   }
 
-  maxStreak = Math.max(maxStreak, currentStreak, previousStreak);
+  // Streak saver protection check
+  if (isStreakBroken && lastStreakSaverUsed) {
+    const saverDateStr = lastStreakSaverUsed.slice(0, 10);
+    const saverGap = getDayDifference(saverDateStr, todayStr);
+    if (saverGap <= 1 && (storedData?.previousStreak || storedData?.currentStreak)) {
+      currentStreak = storedData?.previousStreak || storedData?.currentStreak || 1;
+      isStreakBroken = false;
+      daysSinceLastActive = saverGap;
+    }
+  }
 
   // Calculate days since last break
   let daysSinceLastBreak = 0;
   if (isStreakBroken) {
     daysSinceLastBreak = 0;
+    if (!lastBreakDate) {
+      lastBreakDate = yesterdayStr;
+    }
   } else if (lastBreakDate) {
     daysSinceLastBreak = Math.max(0, getDayDifference(lastBreakDate, todayStr));
   } else {
@@ -291,7 +333,7 @@ export function calculateStreakState({
     lastActiveDate,
     lastBreakDate,
     isStreakBroken,
-    daysSinceLastActive: Math.max(0, gap),
+    daysSinceLastActive,
     daysSinceLastBreak,
     lastStreakSaverUsed,
     canUseStreakSaver,

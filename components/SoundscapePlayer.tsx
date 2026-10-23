@@ -126,7 +126,7 @@ export default function SoundscapePlayer() {
   }, []);
 
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 space-y-3 text-white shadow-xl">
+    <div className="bg-neutral-900/90 border border-neutral-800/80 rounded-xl p-2.5 space-y-2 text-white shadow-lg">
       {/* Hidden YouTube Iframe for Lo-Fi and Alpha */}
       {activeYtId && isPlaying && (
         <iframe
@@ -137,34 +137,34 @@ export default function SoundscapePlayer() {
       )}
 
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400 flex items-center gap-1.5">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 flex items-center gap-1.5">
           <Music className="w-3.5 h-3.5 text-cyan-400" /> Soundscapes
         </h3>
         <button
           onClick={togglePlay}
-          className={`p-2 rounded-xl transition ${
+          className={`p-1.5 rounded-lg transition ${
             isPlaying ? "bg-cyan-500 text-neutral-950" : "bg-neutral-800 text-neutral-400 hover:text-white"
           }`}
         >
-          {isPlaying ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          {isPlaying ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-1.5">
         {["Rain", "Lo-Fi", "Alpha", "Silent"].map((name) => (
           <button
             key={name}
             onClick={() => handleSoundChange(name, true)}
-            className={`px-3 py-2 rounded-xl text-xs font-medium transition flex items-center gap-2 border ${
+            className={`px-2 py-1.5 rounded-lg text-[11px] font-medium transition flex items-center gap-1.5 border ${
               currentSound === name && isPlaying
                 ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-300"
                 : "bg-neutral-950/50 border-neutral-800 text-neutral-400 hover:bg-neutral-800 hover:text-white"
             }`}
           >
-            {name === "Rain" && <CloudRain className="w-3.5 h-3.5" />}
-            {name === "Lo-Fi" && <Radio className="w-3.5 h-3.5" />}
-            {name === "Alpha" && <Flame className="w-3.5 h-3.5" />}
-            {name === "Silent" && <VolumeX className="w-3.5 h-3.5" />}
+            {name === "Rain" && <CloudRain className="w-3 h-3" />}
+            {name === "Lo-Fi" && <Radio className="w-3 h-3" />}
+            {name === "Alpha" && <Flame className="w-3 h-3" />}
+            {name === "Silent" && <VolumeX className="w-3 h-3" />}
             {name}
           </button>
         ))}

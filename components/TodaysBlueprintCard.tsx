@@ -176,7 +176,7 @@ export function TodaysBlueprintCard({ onEditBlueprint }: TodaysBlueprintCardProp
               <span>Today&apos;s Focus Blueprint</span>
             </span>
             <span className="text-slate-500 text-xs hidden sm:inline">•</span>
-            <span className="text-[11px] text-slate-400 font-mono">
+            <span className="text-[11px] text-slate-400 font-mono" suppressHydrationWarning>
               {new Date().toLocaleDateString(undefined, {
                 weekday: "short",
                 month: "short",

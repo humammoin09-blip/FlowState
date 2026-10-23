@@ -358,6 +358,14 @@ export function ConsistencyHeatmap() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchRealAnalytics();
+
+    const handleAuth = () => {
+      fetchRealAnalytics();
+    };
+    window.addEventListener("flowstate_user_authenticated", handleAuth);
+    return () => {
+      window.removeEventListener("flowstate_user_authenticated", handleAuth);
+    };
   }, [fetchRealAnalytics]);
 
   // Weekly Productivity Summary & CSV Export

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { User, X, Check, Target, Sparkles, Database, Upload, ShieldCheck, LogOut, Cloud } from "lucide-react";
+import { User, X, Check, Target, Sparkles, Database, Upload, ShieldCheck, LogOut, Cloud, AlertCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 type ProfileModalProps = {
@@ -41,6 +41,7 @@ export function ProfileModal({
   const [saving, setSaving] = useState(false);
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [isGuest, setIsGuest] = useState(true);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
 
   useEffect(() => {
     setName(userName);
@@ -49,19 +50,40 @@ export function ProfileModal({
     const savedAvatar = localStorage.getItem("flowstate_user_avatar") || userAvatarProp || "🚀";
     setDailyGoal(savedGoal);
     setSelectedAvatar(savedAvatar);
+    setErrorToast(null);
 
-    // Check auth status
+    // Correctly fetch active Supabase session & user
     (async () => {
       try {
-        const { data } = await supabase.auth.getUser();
-        if (data?.user) {
-          setAuthEmail(data.user.email || null);
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        let user = userData?.user || null;
+
+        if (!user || userError) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          user = sessionData?.session?.user || null;
+        }
+
+        if (user) {
+          setAuthEmail(user.email || null);
           setIsGuest(false);
+
+          const userId = user.id;
+          const meta = user.user_metadata || {};
+          const savedName = localStorage.getItem(`flowstate_name_${userId}`) || meta.full_name || meta.name;
+          const savedTitle = localStorage.getItem(`flowstate_title_${userId}`) || meta.professional_title;
+          const savedGoal = localStorage.getItem(`flowstate_goal_${userId}`) || meta.daily_goal;
+          const savedAvatar = localStorage.getItem(`flowstate_avatar_${userId}`) || meta.avatar;
+
+          if (savedName) setName(savedName);
+          if (savedTitle) setTitle(savedTitle);
+          if (savedGoal) setDailyGoal(String(savedGoal));
+          if (savedAvatar) setSelectedAvatar(savedAvatar);
         } else {
           setAuthEmail(null);
           setIsGuest(true);
         }
-      } catch {
+      } catch (err) {
+        console.warn("Profile auth check notice:", err);
         setIsGuest(true);
       }
     })();
@@ -134,49 +156,87 @@ export function ProfileModal({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setErrorToast(null);
 
     try {
-      // Update local state & localStorage
+      // 1. Update React state immediately
       setUserName(name);
       setUserTitle(title);
       if (setDailyGoalProp) setDailyGoalProp(dailyGoal);
       if (setUserAvatarProp) setUserAvatarProp(selectedAvatar);
 
+      // 2. Fetch active Supabase user/session
       const { data: authData } = await supabase.auth.getUser();
-      const currentUserId =
-        authData?.user?.id ||
+      let user = authData?.user || null;
+      if (!user) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        user = sessionData?.session?.user || null;
+      }
+
+      const activeUserId =
+        user?.id ||
         (typeof window !== "undefined"
           ? localStorage.getItem("flowstate_active_user_id") || "guest_default"
           : "guest_default");
 
+      // 3. Persist locally for instant responsiveness
       if (typeof window !== "undefined") {
         localStorage.setItem("flowstate_user_name", name);
         localStorage.setItem("flowstate_user_title", title);
         localStorage.setItem("flowstate_daily_goal", dailyGoal);
         localStorage.setItem("flowstate_user_avatar", selectedAvatar);
 
-        localStorage.setItem(`flowstate_name_${currentUserId}`, name);
-        localStorage.setItem(`flowstate_title_${currentUserId}`, title);
-        localStorage.setItem(`flowstate_goal_${currentUserId}`, dailyGoal);
-        localStorage.setItem(`flowstate_avatar_${currentUserId}`, selectedAvatar);
+        localStorage.setItem(`flowstate_name_${activeUserId}`, name);
+        localStorage.setItem(`flowstate_title_${activeUserId}`, title);
+        localStorage.setItem(`flowstate_goal_${activeUserId}`, dailyGoal);
+        localStorage.setItem(`flowstate_avatar_${activeUserId}`, selectedAvatar);
       }
 
-      // If user is authenticated in Supabase, update auth user metadata
-      if (authData?.user) {
-        await supabase.auth.updateUser({
-          data: {
-            full_name: name,
-            professional_title: title,
-            avatar: selectedAvatar,
-            daily_goal: dailyGoal,
-          },
-        });
+      // 4. If logged in, update auth metadata and user_settings table in Supabase
+      if (user) {
+        // Update user auth metadata
+        try {
+          const { error: metaError } = await supabase.auth.updateUser({
+            data: {
+              full_name: name,
+              name: name,
+              professional_title: title,
+              avatar: selectedAvatar,
+              daily_goal: dailyGoal,
+            },
+          });
+          if (metaError) {
+            console.warn("Notice: Supabase auth updateUser metadata notice:", metaError);
+          }
+        } catch (metaErr) {
+          console.warn("Notice: Supabase auth updateUser exception:", metaErr);
+        }
+
+        // Upsert user_settings table safely with onConflict: id
+        try {
+          const { error: settingsError } = await supabase.from("user_settings").upsert(
+            {
+              id: user.id,
+              user_id: user.id,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "id" }
+          );
+
+          if (settingsError) {
+            console.warn("Notice: user_settings upsert notice:", settingsError);
+          }
+        } catch (settingsCatchErr) {
+          console.warn("Notice: user_settings upsert exception:", settingsCatchErr);
+        }
       }
-    } catch (error) {
-      console.warn("Notice: Profile save error:", error);
-    } finally {
+
       setSaving(false);
       onClose();
+    } catch (error: any) {
+      console.error("Profile save error:", error);
+      setSaving(false);
+      setErrorToast(error?.message || "Failed to save profile changes. Please try again.");
     }
   };
 
@@ -212,6 +272,14 @@ export function ProfileModal({
             <p className="text-xs text-slate-400">Customize your FlowState dashboard presence & goals</p>
           </div>
         </div>
+
+        {/* Error Toast */}
+        {errorToast && (
+          <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center gap-2.5 text-xs text-rose-300">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span className="flex-1">{errorToast}</span>
+          </div>
+        )}
 
         {/* Account Sync Status Banner */}
         {isGuest ? (
