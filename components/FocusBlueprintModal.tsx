@@ -504,9 +504,9 @@ export function FocusBlueprintModal({
                   Allowlist Domains ({todaysBlueprint.allowlist?.length || 0}):
                 </span>
                 <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto no-scrollbar">
-                  {todaysBlueprint.allowlist?.map((d) => (
+                  {todaysBlueprint.allowlist?.map((d, i) => (
                     <span
-                      key={d}
+                      key={`${d}-${i}`}
                       className="px-2 py-0.5 rounded-md bg-[#00ff88]/10 border border-[#00ff88]/30 text-[10px] font-mono text-[#00ff88]"
                     >
                       {d}

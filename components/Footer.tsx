@@ -23,7 +23,7 @@ export function Footer({ className = "" }: FooterProps) {
           </div>
           <span className="font-semibold text-slate-300">FlowState</span>
           <span className="text-slate-600">•</span>
-          <span>© {currentYear} FlowState. All rights reserved.</span>
+          <span suppressHydrationWarning>© {currentYear} FlowState. All rights reserved.</span>
         </div>
 
         {/* Legal & Help Links */}

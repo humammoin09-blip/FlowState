@@ -2142,9 +2142,9 @@ export function PomodoroTimer({
                 Allowlist:
               </span>
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-                {allowedDomains.slice(0, 2).map((d) => (
+                {allowedDomains.slice(0, 2).map((d, i) => (
                   <span
-                    key={d}
+                    key={`${d}-${i}`}
                     className="px-2 py-0.5 rounded-md bg-white/[0.06] border border-white/10 text-[10px] font-mono text-slate-200"
                   >
                     {d}
@@ -2332,11 +2332,11 @@ export function PomodoroTimer({
                   <span className="text-slate-500 text-[10px]">Active in Focus Session</span>
                 </div>
                 <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1">
-                  {allowedDomains.map((domain) => {
+                  {allowedDomains.map((domain, dIdx) => {
                     const isDefault = DEFAULT_ALLOWED_DOMAINS.includes(domain);
                     return (
                       <div
-                        key={domain}
+                        key={`${domain}-${dIdx}`}
                         className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-900/80 border border-white/5"
                       >
                         <div className="flex items-center gap-2">
@@ -2412,9 +2412,9 @@ export function PomodoroTimer({
                 )}
 
                 <div className="max-h-24 overflow-y-auto space-y-1 pr-1 pt-0.5">
-                  {blockedPaths.map((path) => (
+                  {blockedPaths.map((path, pIdx) => (
                     <div
-                      key={path}
+                      key={`${path}-${pIdx}`}
                       className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-rose-950/40 border border-rose-500/20 text-rose-200 text-xs font-mono"
                     >
                       <span className="truncate">{path}</span>

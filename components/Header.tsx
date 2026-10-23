@@ -50,6 +50,7 @@ export function Header({
   focusHours = 0,
   completedTasksCount = 0,
 }: HeaderProps) {
+  const [isMounted, setIsMounted] = useState(false);
   const [greeting, setGreeting] = useState("Good Afternoon");
   const [currentDateStr, setCurrentDateStr] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
@@ -93,6 +94,7 @@ export function Header({
 
   // Update header greeting and date
   useEffect(() => {
+    setIsMounted(true);
     const updateTime = () => {
       const now = new Date();
       const hours = now.getHours();
@@ -143,16 +145,18 @@ export function Header({
 
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <h1 className="text-base sm:text-xl md:text-2xl font-extrabold tracking-tight text-white flex items-center gap-1.5 sm:gap-2 truncate">
-              <span className="truncate">{greeting}, {userName.split(" ")[0]}</span>
+            <h1 className="text-base sm:text-xl md:text-2xl font-extrabold tracking-tight text-white flex items-center gap-1.5 sm:gap-2 truncate" suppressHydrationWarning>
+              <span className="truncate" suppressHydrationWarning>{greeting}, {userName.split(" ")[0]}</span>
               <span className="inline-block animate-bounce text-amber-400 flex-shrink-0">
                 ⚡
               </span>
             </h1>
           </div>
-          <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5 flex items-center gap-1.5 sm:gap-2 truncate">
-            <span suppressHydrationWarning>{currentDateStr || "Thursday, Sep 24"}</span>
-            <span className="w-1 h-1 rounded-full bg-slate-600 flex-shrink-0" />
+          <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5 flex items-center gap-1.5 sm:gap-2 truncate" suppressHydrationWarning>
+            <span suppressHydrationWarning>{isMounted ? currentDateStr : ""}</span>
+            {isMounted && currentDateStr ? (
+              <span className="w-1 h-1 rounded-full bg-slate-600 flex-shrink-0" />
+            ) : null}
             <span className="text-emerald-400 font-medium truncate">
               Optimal Focus Window
             </span>
@@ -274,9 +278,9 @@ export function Header({
                       No notifications yet
                     </div>
                   ) : (
-                    notifications.map((n) => (
+                    notifications.map((n, idx) => (
                       <div
-                        key={n.id}
+                        key={n.id || `notif-${idx}`}
                         onClick={() => {
                           if (!n.read) {
                             markAsRead(n.id);

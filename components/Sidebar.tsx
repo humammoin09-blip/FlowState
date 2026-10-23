@@ -249,10 +249,10 @@ export function Sidebar({
               exit={{ opacity: 0 }}
               className="flex flex-col text-left overflow-hidden flex-1"
             >
-              <span className="text-[12px] font-semibold text-slate-200 truncate leading-tight">
+              <span className="text-[12px] font-semibold text-slate-200 truncate leading-tight" suppressHydrationWarning>
                 {userName}
               </span>
-              <span className="text-[9.5px] text-emerald-400/90 font-medium flex items-center gap-1 truncate leading-tight mt-0.5">
+              <span className="text-[9.5px] text-emerald-400/90 font-medium flex items-center gap-1 truncate leading-tight mt-0.5" suppressHydrationWarning>
                 <Sparkles className="w-2.5 h-2.5 shrink-0" /> {userName === "Guest User" ? "New User" : userTitle}
               </span>
             </motion.div>
@@ -436,8 +436,8 @@ export function Sidebar({
                   <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-400 border-[1.5px] border-slate-950 shadow-[0_0_6px_#10b981]" />
                 </div>
                 <div className="flex flex-col text-left overflow-hidden flex-1">
-                  <span className="text-[12px] font-semibold text-slate-200 truncate leading-tight">{userName}</span>
-                  <span className="text-[9.5px] text-emerald-400/90 font-medium flex items-center gap-1 truncate leading-tight mt-0.5">
+                  <span className="text-[12px] font-semibold text-slate-200 truncate leading-tight" suppressHydrationWarning>{userName}</span>
+                  <span className="text-[9.5px] text-emerald-400/90 font-medium flex items-center gap-1 truncate leading-tight mt-0.5" suppressHydrationWarning>
                     <Sparkles className="w-2.5 h-2.5 shrink-0" /> {userName === "Guest User" ? "New User" : userTitle}
                   </span>
                 </div>

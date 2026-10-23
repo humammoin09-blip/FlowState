@@ -206,9 +206,9 @@ export function RecentBlueprints({
                     <Shield className="w-2.5 h-2.5 text-slate-500" />
                     Allowed:
                   </span>
-                  {bp.allowlist?.slice(0, 3).map((domain) => (
+                  {bp.allowlist?.slice(0, 3).map((domain, dIdx) => (
                     <span
-                      key={domain}
+                      key={`${domain}-${dIdx}`}
                       className="px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/10 text-[10px] font-mono text-slate-300 shrink-0"
                     >
                       {domain}
@@ -221,7 +221,7 @@ export function RecentBlueprints({
                   )}
                 </div>
 
-                <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                <span className="text-[10px] text-slate-500 font-mono shrink-0" suppressHydrationWarning>
                   {formatTimestamp(bp.created_at)}
                 </span>
               </div>

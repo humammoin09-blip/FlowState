@@ -41,6 +41,19 @@ function getDomainIcon(domain: string) {
 export function TodaysBlueprintCard({ onEditBlueprint }: TodaysBlueprintCardProps) {
   const [blueprint, setBlueprint] = useState<FocusBlueprintRecord | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isMounted, setIsMounted] = useState<boolean>(false);
+  const [todayFormattedDate, setTodayFormattedDate] = useState<string>("");
+
+  useEffect(() => {
+    setIsMounted(true);
+    setTodayFormattedDate(
+      new Date().toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      })
+    );
+  }, []);
 
   const fetchTodaysBlueprint = useCallback(async () => {
     try {
@@ -175,14 +188,14 @@ export function TodaysBlueprintCard({ onEditBlueprint }: TodaysBlueprintCardProp
               <Sparkles className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
               <span>Today&apos;s Focus Blueprint</span>
             </span>
-            <span className="text-slate-500 text-xs hidden sm:inline">•</span>
-            <span className="text-[11px] text-slate-400 font-mono" suppressHydrationWarning>
-              {new Date().toLocaleDateString(undefined, {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-              })}
-            </span>
+            {isMounted && todayFormattedDate ? (
+              <>
+                <span className="text-slate-500 text-xs hidden sm:inline">•</span>
+                <span className="text-[11px] text-slate-400 font-mono" suppressHydrationWarning>
+                  {todayFormattedDate}
+                </span>
+              </>
+            ) : null}
           </div>
 
           {blueprint ? (
@@ -204,9 +217,9 @@ export function TodaysBlueprintCard({ onEditBlueprint }: TodaysBlueprintCardProp
                   Allowed:
                 </span>
                 {domains.length > 0 ? (
-                  domains.map((domain) => (
+                  domains.map((domain, i) => (
                     <span
-                      key={domain}
+                      key={`${domain}-${i}`}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-950/80 border border-white/10 text-xs font-mono font-medium text-slate-200 hover:border-emerald-500/40 transition-colors shadow-sm"
                     >
                       {getDomainIcon(domain)}
