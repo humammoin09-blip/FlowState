@@ -9,6 +9,7 @@ import {
   HardDrive,
   Mail,
   Zap,
+  Puzzle, // 👈 Naya icon add kiya hai
 } from "lucide-react";
 import Footer from "@/components/Footer";
 
@@ -123,6 +124,24 @@ export default function PrivacyPolicyPage() {
               </div>
             </div>
           </section>
+
+          {/* Browser Extension Data Usage */}
+          <section className="bg-slate-900/40 border border-white/10 rounded-2xl p-6 sm:p-8 backdrop-blur-sm transition hover:border-white/15">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0 mt-0.5">
+                <Puzzle className="w-5 h-5" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                  Browser Extension Data Usage
+                </h2>
+                <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
+                  FlowState Blocker runs locally in your browser. It reads the active tab's URL solely to enforce blocking rules during focus sessions. It does not collect, store, or transmit your browsing history, URLs, or any personal data to our servers or to any third-party APIs like Gemini.
+                </p>
+              </div>
+            </div>
+          </section>
+          
 
           {/* Section 4: Contact */}
           <section className="bg-slate-900/40 border border-white/10 rounded-2xl p-6 sm:p-8 backdrop-blur-sm transition hover:border-white/15">
