@@ -9,7 +9,7 @@ import {
   HardDrive,
   Mail,
   Zap,
-  Puzzle, // 👈 Naya icon add kiya hai
+  Puzzle, // 
 } from "lucide-react";
 import Footer from "@/components/Footer";
 
