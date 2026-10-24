@@ -438,6 +438,10 @@ export default function FlowStateDashboard() {
             typeof window !== "undefined"
               ? localStorage.getItem(`task_timer_${t.id}`)
               : null;
+          const savedEndTime =
+            typeof window !== "undefined"
+              ? localStorage.getItem(`task_timer_end_${t.id}`)
+              : null;
           const isTaskCompleted = Boolean(
             t.completed ||
               t.remaining_seconds === 0 ||
@@ -464,7 +468,9 @@ export default function FlowStateDashboard() {
           const defaultMins = parseInt(rawDuration || "5", 10) || 5;
 
           let remaining: number;
-          if (savedTime !== null) {
+          if (savedEndTime !== null) {
+            remaining = Math.max(0, Math.ceil((Number(savedEndTime) - Date.now()) / 1000));
+          } else if (savedTime !== null) {
             remaining = parseInt(savedTime, 10);
           } else if (t.remaining_seconds !== undefined && t.remaining_seconds !== null) {
             remaining = t.remaining_seconds;
@@ -476,6 +482,7 @@ export default function FlowStateDashboard() {
             if (typeof window !== "undefined") {
               localStorage.setItem(`task_timer_${t.id}`, "0");
               localStorage.setItem(`task_completed_${t.id}`, "true");
+              localStorage.removeItem(`task_timer_end_${t.id}`);
             }
             return {
               ...t,
@@ -484,10 +491,6 @@ export default function FlowStateDashboard() {
               remainingSeconds: 0,
               remaining_seconds: 0,
             };
-          }
-
-          if (typeof window !== "undefined") {
-            localStorage.removeItem(`task_timer_end_${t.id}`);
           }
 
           return {
@@ -524,12 +527,20 @@ export default function FlowStateDashboard() {
                 };
               }
               const defaultMins = parseInt(rawDuration || "5", 10) || 5;
-              const rem = savedTime !== null ? parseInt(savedTime, 10) : (t.remainingSeconds ?? defaultMins * 60);
+              const savedEndTime = localStorage.getItem(`task_timer_end_${t.id}`);
+              let rem: number;
+              if (savedEndTime !== null) {
+                rem = Math.max(0, Math.ceil((Number(savedEndTime) - Date.now()) / 1000));
+              } else if (savedTime !== null) {
+                rem = parseInt(savedTime, 10);
+              } else {
+                rem = t.remainingSeconds ?? defaultMins * 60;
+              }
               return {
                 ...t,
                 duration: rawDuration,
-                completed: false,
-                remainingSeconds: isNaN(rem) ? defaultMins * 60 : rem,
+                completed: rem <= 0,
+                remainingSeconds: isNaN(rem) ? defaultMins * 60 : Math.max(0, rem),
               };
             });
             setTasks(normalized);

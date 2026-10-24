@@ -480,6 +480,66 @@ export function PomodoroTimer({
 
   const isCompletingRef = useRef(false);
   const notifiedTimesRef = useRef<Set<number>>(new Set());
+  const completionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scheduledEndTimeRef = useRef<number | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const hasNotifiedCompletionRef = useRef<boolean>(false);
+
+  const requestNotificationPermission = useCallback(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+    }
+  }, []);
+
+  const triggerCompletionNotification = useCallback((modeToFinish: TimerMode = "focus") => {
+    if (hasNotifiedCompletionRef.current) return;
+    hasNotifiedCompletionRef.current = true;
+
+    const savedDuration =
+      typeof window !== "undefined"
+        ? localStorage.getItem(STORAGE_KEY_TIMER_DURATION) ||
+          localStorage.getItem("flowstate_current_session_duration") ||
+          localStorage.getItem(STORAGE_KEY_FOCUS_DURATION) ||
+          String(customFocusMins || 25)
+        : String(customFocusMins || 25);
+    const sessionMins = parseInt(savedDuration, 10) || customFocusMins || 25;
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("flowstate_new_notification", {
+          detail: {
+            title: `FlowState Session Complete! You completed ${sessionMins} minutes!`,
+            type: "pomodoro",
+          },
+        })
+      );
+    }
+
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      try {
+        const notif = new Notification("FlowState Session Complete!", {
+          body: `You completed ${sessionMins} minutes!`,
+          icon: "/favicon.ico",
+          tag: "flowstate-session-complete",
+          requireInteraction: true,
+        });
+        notif.onclick = () => {
+          window.focus();
+          notif.close();
+          setCelebrationDuration(sessionMins);
+          setCelebrationEndTime(Date.now());
+          setShowCelebration(true);
+          localStorage.removeItem("pending_celebration");
+          localStorage.removeItem("pending_celebration_duration");
+          localStorage.removeItem(STORAGE_KEY_TIMER_END);
+        };
+      } catch (err) {
+        console.warn("Notification error:", err);
+      }
+    }
+  }, [customFocusMins]);
 
   // Load custom focus duration, allowed domains, blocked paths, and warning state on mount
   useEffect(() => {
@@ -660,40 +720,8 @@ export function PomodoroTimer({
       // Check whether user is currently away from the FlowState tab (tab is hidden)
       const isUserAway = typeof document !== "undefined" && document.hidden;
 
-      // Immediate Browser Notification at 0:00:
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("flowstate_new_notification", {
-            detail: {
-              title: `FlowState Session Complete! You completed ${sessionMins} minutes!`,
-              type: "pomodoro",
-            },
-          })
-        );
-      }
-
-      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-        try {
-          const notif = new Notification("FlowState Session Complete!", {
-            body: `You completed ${sessionMins} minutes!`,
-            icon: "/favicon.ico",
-            tag: "flowstate-session-complete",
-            requireInteraction: true,
-          });
-          notif.onclick = () => {
-            window.focus();
-            notif.close();
-            setCelebrationDuration(sessionMins);
-            setCelebrationEndTime(Date.now());
-            setShowCelebration(true);
-            localStorage.removeItem("pending_celebration");
-            localStorage.removeItem("pending_celebration_duration");
-            localStorage.removeItem(STORAGE_KEY_TIMER_END);
-          };
-        } catch {
-          // ignore notification error
-        }
-      }
+      // Browser notification MUST fire at exactly 0:00 regardless of which tab is active
+      triggerCompletionNotification(currentMode);
 
       setCelebrationDuration(sessionMins);
       setCelebrationStartTime(startTimeVal || null);
@@ -789,7 +817,7 @@ export function PomodoroTimer({
     setTimeout(() => {
       isCompletingRef.current = false;
     }, 1000);
-  }, [customFocusMins, modeDurations, onFocusComplete, setTimerActive, setTimerTime]);
+  }, [customFocusMins, modeDurations, onFocusComplete, setTimerActive, setTimerTime, triggerCompletionNotification]);
 
   const syncStateFromStorage = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -831,6 +859,7 @@ export function PomodoroTimer({
           });
         }
       } else {
+        triggerCompletionNotification(savedMode);
         handleTimerCompletion(savedMode);
       }
     } else if (savedRemaining !== null) {
@@ -844,7 +873,7 @@ export function PomodoroTimer({
       setTimerActive(false);
       setTimerTime(formatTime(defaultTime));
     }
-  }, [handleTimerCompletion, modeDurations, setTimerActive, setTimerTime]);
+  }, [handleTimerCompletion, modeDurations, setTimerActive, setTimerTime, triggerCompletionNotification]);
 
   useEffect(() => {
     syncStateFromStorage();
@@ -882,82 +911,147 @@ export function PomodoroTimer({
     }
   };
 
-  // Dedicated background timer & active 0:00 exact notification trigger
+  const scheduleExactCompletion = useCallback((targetEndTime: number, modeToSchedule: TimerMode) => {
+    const now = Date.now();
+    const exactMs = targetEndTime - now;
+    if (exactMs <= 0) {
+      triggerCompletionNotification(modeToSchedule);
+      handleTimerCompletion(modeToSchedule);
+      return;
+    }
+
+    if (completionTimeoutRef.current) {
+      clearTimeout(completionTimeoutRef.current);
+      completionTimeoutRef.current = null;
+    }
+
+    scheduledEndTimeRef.current = targetEndTime;
+
+    // 1. Direct setTimeout for the exact remaining milliseconds to trigger the Web Notification immediately at 0:00
+    completionTimeoutRef.current = setTimeout(() => {
+      const savedRunning = typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
+      const currentEnd =
+        typeof window !== "undefined"
+          ? localStorage.getItem(STORAGE_KEY_TIMER_END) || localStorage.getItem(STORAGE_KEY_TARGET_END_TIME)
+          : null;
+      if (savedRunning && currentEnd && Date.now() >= Number(currentEnd) - 500) {
+        triggerCompletionNotification(modeToSchedule);
+        handleTimerCompletion(modeToSchedule);
+      }
+    }, exactMs);
+
+    // 2. Dedicated background worker for guaranteed 0:00 execution across all tabs
+    if (workerRef.current) {
+      try {
+        workerRef.current.postMessage({ type: "start", endTime: targetEndTime });
+      } catch (err) {
+        console.warn("Worker start notice:", err);
+      }
+    }
+  }, [handleTimerCompletion, triggerCompletionNotification]);
+
+  // Dedicated Worker lifecycle to avoid background tab timer throttling
   useEffect(() => {
-    let completionTimeout: NodeJS.Timeout | null = null;
-    let scheduledEndTime: number | null = null;
+    let worker: Worker | null = null;
+    let workerBlobUrl: string | null = null;
+    try {
+      if (typeof window !== "undefined" && typeof Worker !== "undefined") {
+        const blob = new Blob(
+          [
+            `let timerId = null;
+             let targetEnd = null;
+             self.onmessage = function(e) {
+               if (e.data && e.data.type === 'start') {
+                 targetEnd = e.data.endTime;
+                 if (timerId) clearInterval(timerId);
+                 timerId = setInterval(function() {
+                   const now = Date.now();
+                   if (targetEnd && now >= targetEnd) {
+                     self.postMessage({ type: 'timer_complete', endTime: targetEnd });
+                     clearInterval(timerId);
+                     timerId = null;
+                     targetEnd = null;
+                   } else {
+                     self.postMessage({ type: 'tick' });
+                   }
+                 }, 500);
+               } else if (e.data && e.data.type === 'stop') {
+                 if (timerId) {
+                   clearInterval(timerId);
+                   timerId = null;
+                 }
+                 targetEnd = null;
+               }
+             };`,
+          ],
+          { type: "application/javascript" }
+        );
+        workerBlobUrl = URL.createObjectURL(blob);
+        worker = new Worker(workerBlobUrl);
+        workerRef.current = worker;
 
-    const fireCompletionNotification = (mode: TimerMode) => {
-      const savedDuration =
-        localStorage.getItem(STORAGE_KEY_TIMER_DURATION) ||
-        localStorage.getItem("flowstate_current_session_duration") ||
-        localStorage.getItem(STORAGE_KEY_FOCUS_DURATION) ||
-        String(customFocusMins || 25);
-      const duration = parseInt(savedDuration, 10) || customFocusMins || 25;
+        worker.onmessage = (e) => {
+          if (e.data && e.data.type === "timer_complete") {
+            const savedRunning = typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
+            const currentEnd =
+              typeof window !== "undefined"
+                ? localStorage.getItem(STORAGE_KEY_TIMER_END) ||
+                  localStorage.getItem(STORAGE_KEY_TARGET_END_TIME)
+                : null;
+            const savedMode = (typeof window !== "undefined" && (localStorage.getItem(STORAGE_KEY_MODE) as TimerMode)) || "focus";
+            if (savedRunning && currentEnd && Date.now() >= Number(currentEnd) - 500) {
+              triggerCompletionNotification(savedMode);
+              handleTimerCompletion(savedMode);
+            }
+          }
+        };
 
-      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-        try {
-          const notif = new Notification("FlowState Session Complete!", {
-            body: `You completed ${duration} minutes!`,
-            icon: "/favicon.ico",
-            tag: "flowstate-session-complete",
-            requireInteraction: true,
-          });
-          notif.onclick = () => {
-            window.focus();
-            notif.close();
-            setCelebrationDuration(duration);
-            setCelebrationEndTime(Date.now());
-            setShowCelebration(true);
-            localStorage.removeItem("pending_celebration");
-            localStorage.removeItem("pending_celebration_duration");
-            localStorage.removeItem(STORAGE_KEY_TIMER_END);
-          };
-        } catch {
-          // ignore notification error
+        const savedRunning = typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
+        const savedTargetEndTime =
+          typeof window !== "undefined"
+            ? localStorage.getItem(STORAGE_KEY_TIMER_END) ||
+              localStorage.getItem(STORAGE_KEY_TARGET_END_TIME)
+            : null;
+        if (savedRunning && savedTargetEndTime) {
+          worker.postMessage({ type: "start", endTime: Number(savedTargetEndTime) });
         }
       }
+    } catch {
+      // Worker fallback
+    }
 
-      handleTimerCompletion(mode);
-    };
-
-    const scheduleExactCompletion = (targetEndTime: number, mode: TimerMode) => {
-      const now = Date.now();
-      const exactMs = targetEndTime - now;
-      if (exactMs <= 0) return;
-
-      // Do not clear and reschedule if already scheduled for this exact endTime
-      if (scheduledEndTime === targetEndTime && completionTimeout) {
-        return;
+    return () => {
+      if (worker) {
+        worker.postMessage({ type: "stop" });
+        worker.terminate();
+        workerRef.current = null;
       }
-
-      scheduledEndTime = targetEndTime;
-      if (completionTimeout) clearTimeout(completionTimeout);
-      completionTimeout = setTimeout(() => {
-        const savedRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
-        const currentEnd =
-          localStorage.getItem(STORAGE_KEY_TIMER_END) ||
-          localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
-        if (savedRunning && currentEnd && Date.now() >= Number(currentEnd)) {
-          fireCompletionNotification(mode);
-        }
-      }, exactMs);
+      if (workerBlobUrl) {
+        URL.revokeObjectURL(workerBlobUrl);
+      }
     };
+  }, [handleTimerCompletion, triggerCompletionNotification]);
 
+  // Pomodoro countdown timer tick interval
+  useEffect(() => {
     const tick = () => {
-      const savedRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
+      const savedRunning = typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
       const savedTargetEndTime =
-        localStorage.getItem(STORAGE_KEY_TIMER_END) ||
-        localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
-      const savedMode = (localStorage.getItem(STORAGE_KEY_MODE) as TimerMode) || "focus";
+        typeof window !== "undefined"
+          ? localStorage.getItem(STORAGE_KEY_TIMER_END) ||
+            localStorage.getItem(STORAGE_KEY_TARGET_END_TIME)
+          : null;
+      const savedMode = (typeof window !== "undefined" && (localStorage.getItem(STORAGE_KEY_MODE) as TimerMode)) || "focus";
 
       if (savedRunning && savedTargetEndTime) {
         const targetEndTime = Number(savedTargetEndTime);
         const now = Date.now();
         const left = Math.max(0, Math.ceil((targetEndTime - now) / 1000));
 
-        // Schedule exact timeout to fire notification at exact 0:00 without delay
-        scheduleExactCompletion(targetEndTime, savedMode);
+        // Ensure exact timeout is scheduled
+        if (!completionTimeoutRef.current || scheduledEndTimeRef.current !== targetEndTime) {
+          scheduleExactCompletion(targetEndTime, savedMode);
+        }
 
         // Low time notification trigger (2 mins = 120s, 1 min = 60s)
         if (left === 120 || left === 60) {
@@ -987,10 +1081,11 @@ export function PomodoroTimer({
         }
 
         if (left <= 0) {
-          if (completionTimeout) {
-            clearTimeout(completionTimeout);
-            completionTimeout = null;
+          if (completionTimeoutRef.current) {
+            clearTimeout(completionTimeoutRef.current);
+            completionTimeoutRef.current = null;
           }
+          triggerCompletionNotification(savedMode);
           handleTimerCompletion(savedMode);
         } else {
           setTimeLeft(left);
@@ -998,11 +1093,11 @@ export function PomodoroTimer({
           setTimerTime(formatTime(left));
         }
       } else {
-        if (completionTimeout) {
-          clearTimeout(completionTimeout);
-          completionTimeout = null;
+        if (completionTimeoutRef.current) {
+          clearTimeout(completionTimeoutRef.current);
+          completionTimeoutRef.current = null;
         }
-        scheduledEndTime = null;
+        scheduledEndTimeRef.current = null;
       }
     };
 
@@ -1010,180 +1105,81 @@ export function PomodoroTimer({
 
     const interval = setInterval(tick, 1000);
     window.addEventListener("focus", tick);
-    window.addEventListener("visibilitychange", tick);
+    document.addEventListener("visibilitychange", tick);
     window.addEventListener("flowstate_timer_started", tick);
-
-    // Dedicated Worker to avoid background tab timer throttling
-    let worker: Worker | null = null;
-    let workerBlobUrl: string | null = null;
-    try {
-      if (typeof window !== "undefined" && typeof Worker !== "undefined") {
-        const blob = new Blob(
-          [
-            `let timerId = null;
-             let targetEnd = null;
-             self.onmessage = function(e) {
-               if (e.data && e.data.type === 'start') {
-                 targetEnd = e.data.endTime;
-                 if (timerId) clearInterval(timerId);
-                 timerId = setInterval(function() {
-                   const now = Date.now();
-                   if (targetEnd && now >= targetEnd) {
-                     self.postMessage({ type: 'timer_complete', endTime: targetEnd });
-                     clearInterval(timerId);
-                     timerId = null;
-                     targetEnd = null;
-                   } else {
-                     self.postMessage({ type: 'tick' });
-                   }
-                 }, 1000);
-               } else if (e.data && e.data.type === 'stop') {
-                 if (timerId) {
-                   clearInterval(timerId);
-                   timerId = null;
-                 }
-                 targetEnd = null;
-               }
-             };`,
-          ],
-          { type: "application/javascript" }
-        );
-        workerBlobUrl = URL.createObjectURL(blob);
-        worker = new Worker(workerBlobUrl);
-        worker.onmessage = (e) => {
-          if (e.data && e.data.type === "timer_complete") {
-            const savedRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
-            const currentEnd =
-              localStorage.getItem(STORAGE_KEY_TIMER_END) ||
-              localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
-            const savedMode = (localStorage.getItem(STORAGE_KEY_MODE) as TimerMode) || "focus";
-            if (savedRunning && currentEnd && Date.now() >= Number(currentEnd)) {
-              fireCompletionNotification(savedMode);
-            }
-          } else {
-            tick();
-          }
-        };
-
-        const savedRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
-        const savedTargetEndTime =
-          localStorage.getItem(STORAGE_KEY_TIMER_END) ||
-          localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
-        if (savedRunning && savedTargetEndTime) {
-          worker.postMessage({ type: "start", endTime: Number(savedTargetEndTime) });
-        }
-      }
-    } catch {
-      // Worker fallback
-    }
 
     return () => {
       clearInterval(interval);
-      if (completionTimeout) clearTimeout(completionTimeout);
-      if (worker) {
-        worker.postMessage({ type: "stop" });
-        worker.terminate();
-      }
-      if (workerBlobUrl) {
-        URL.revokeObjectURL(workerBlobUrl);
-      }
       window.removeEventListener("focus", tick);
-      window.removeEventListener("visibilitychange", tick);
+      document.removeEventListener("visibilitychange", tick);
       window.removeEventListener("flowstate_timer_started", tick);
     };
-  }, [customFocusMins, formatTime, handleTimerCompletion, setTimerActive, setTimerTime]);
+  }, [formatTime, handleTimerCompletion, scheduleExactCompletion, setTimerActive, setTimerTime, triggerCompletionNotification]);
 
-  // Timestamp-based Visibility Change & Timer Status Check (fires notification AND celebration upon tab return)
+  // Page Visibility API & tab focus listener - fires notifications when away & celebration upon tab return
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const checkTimerStatus = () => {
-      // Only check when returning to visible tab
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    const checkVisibilityAndTimer = () => {
+      const endTime = parseInt(
+        localStorage.getItem(STORAGE_KEY_TIMER_END) ||
+        localStorage.getItem(STORAGE_KEY_TARGET_END_TIME) ||
+        "0",
+        10
+      );
+      const isRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
+      const savedMode = (localStorage.getItem(STORAGE_KEY_MODE) as TimerMode) || "focus";
 
-      const endTime = parseInt(localStorage.getItem(STORAGE_KEY_TIMER_END) || "0", 10);
-
-      if (endTime && Date.now() >= endTime) {
-        // Timer finished while away
-        const savedDuration =
-          localStorage.getItem(STORAGE_KEY_TIMER_DURATION) ||
-          localStorage.getItem("flowstate_current_session_duration") ||
-          localStorage.getItem(STORAGE_KEY_FOCUS_DURATION) ||
-          String(customFocusMins || 25);
-        const duration = parseInt(savedDuration, 10) || customFocusMins || 25;
-
-        // Immediate browser notification upon return
-        if ("Notification" in window && Notification.permission === "granted") {
-          try {
-            const notif = new Notification("FlowState Session Complete!", {
-              body: `You completed ${duration} minutes!`,
-              icon: "/favicon.ico",
-              tag: "flowstate-session-complete",
-            });
-            notif.onclick = () => {
-              window.focus();
-              notif.close();
-            };
-          } catch (err) {
-            console.warn("Notification error:", err);
-          }
-        }
-
-        // Show celebration modal immediately
-        setCelebrationDuration(duration);
-        setCelebrationEndTime(Date.now());
-        setShowCelebration(true);
-        localStorage.removeItem("pending_celebration");
-        localStorage.removeItem("pending_celebration_duration");
-        localStorage.removeItem(STORAGE_KEY_TIMER_END);
-
-        handleTimerCompletion("focus");
-        return;
+      // If user is away (or returning) and timer has reached endTime:
+      // Immediately trigger browser notification!
+      if (isRunning && endTime && Date.now() >= endTime) {
+        triggerCompletionNotification(savedMode);
+        handleTimerCompletion(savedMode);
       }
 
-      // Check if celebration was saved as pending while away
-      const isPending = localStorage.getItem("pending_celebration");
-      if (isPending) {
-        localStorage.removeItem("pending_celebration");
+      // If tab has become visible and celebration is pending, open celebration modal
+      if (document.visibilityState === "visible") {
+        const isPending = localStorage.getItem("pending_celebration") === "true";
+        if (isPending) {
+          localStorage.removeItem("pending_celebration");
 
-        let dur = customFocusMins || 25;
-        const pendingDur = localStorage.getItem("pending_celebration_duration");
-        if (pendingDur) {
-          const parsed = parseInt(pendingDur, 10);
-          if (!isNaN(parsed) && parsed > 0) dur = parsed;
-          localStorage.removeItem("pending_celebration_duration");
-        } else {
-          const lastSession = localStorage.getItem("flowstate_last_completed_session_duration");
-          if (lastSession) {
-            const parsed = parseInt(lastSession, 10);
+          let dur = customFocusMins || 25;
+          const pendingDur = localStorage.getItem("pending_celebration_duration");
+          if (pendingDur) {
+            const parsed = parseInt(pendingDur, 10);
             if (!isNaN(parsed) && parsed > 0) dur = parsed;
+            localStorage.removeItem("pending_celebration_duration");
+          } else {
+            const lastSession = localStorage.getItem("flowstate_last_completed_session_duration");
+            if (lastSession) {
+              const parsed = parseInt(lastSession, 10);
+              if (!isNaN(parsed) && parsed > 0) dur = parsed;
+            }
           }
-        }
 
-        setCelebrationDuration(dur);
-        setCelebrationEndTime(Date.now());
-        setShowCelebration(true);
+          setCelebrationDuration(dur);
+          setCelebrationEndTime(Date.now());
+          setShowCelebration(true);
+        }
       }
     };
 
-    if (typeof document !== "undefined" && document.visibilityState === "visible") {
-      checkTimerStatus();
+    if (document.visibilityState === "visible") {
+      checkVisibilityAndTimer();
     }
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        checkTimerStatus();
-      }
+      checkVisibilityAndTimer();
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", checkTimerStatus);
+    window.addEventListener("focus", checkVisibilityAndTimer);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", checkTimerStatus);
+      window.removeEventListener("focus", checkVisibilityAndTimer);
     };
-  }, [customFocusMins, handleTimerCompletion]);
+  }, [customFocusMins, handleTimerCompletion, triggerCompletionNotification]);
 
 
   // Minimal Tab State Monitor (for visual indicator only - no toasts or alerts)
@@ -1221,6 +1217,15 @@ export function PomodoroTimer({
 
     if (isRunning) {
       // Pause
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current);
+        completionTimeoutRef.current = null;
+      }
+      scheduledEndTimeRef.current = null;
+      if (workerRef.current) {
+        workerRef.current.postMessage({ type: "stop" });
+      }
+
       const savedTargetEndTime =
       localStorage.getItem(STORAGE_KEY_TIMER_END) ||
       localStorage.getItem(STORAGE_KEY_TARGET_END_TIME);
@@ -1303,9 +1308,11 @@ export function PomodoroTimer({
       localStorage.setItem(STORAGE_KEY_MODE, currentMode);
       localStorage.removeItem(STORAGE_KEY_REMAINING);
 
-      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
-        Notification.requestPermission().catch(() => {});
-      }
+      hasNotifiedCompletionRef.current = false;
+      requestNotificationPermission();
+
+      scheduleExactCompletion(targetEndTime, currentMode);
+
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("flowstate_timer_started"));
       }
@@ -1377,9 +1384,11 @@ export function PomodoroTimer({
       localStorage.setItem(STORAGE_KEY_MODE, currentMode);
       localStorage.removeItem(STORAGE_KEY_REMAINING);
 
-      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
-        Notification.requestPermission().catch(() => {});
-      }
+      hasNotifiedCompletionRef.current = false;
+      requestNotificationPermission();
+
+      scheduleExactCompletion(targetEndTime, currentMode);
+
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("flowstate_timer_started"));
       }
@@ -1424,7 +1433,7 @@ export function PomodoroTimer({
         successToastTimerRef.current = null;
       }, 4000);
     },
-    [allowedDomains, blockedPaths, formatTime, modeDurations, setTimerActive, setTimerTime]
+    [allowedDomains, blockedPaths, customFocusMins, formatTime, modeDurations, requestNotificationPermission, scheduleExactCompletion, setTimerActive, setTimerTime]
   );
   // Listen for external start trigger (e.g. from AI Discipline Coach or Streak Rebuild Modal)
   const toggleTimerRef = useRef(toggleTimer);
@@ -1435,6 +1444,7 @@ export function PomodoroTimer({
     const handleExternalStart = () => {
       const savedRunning = localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
       if (!savedRunning) {
+        requestNotificationPermission();
         toggleTimerRef.current();
       }
     };
@@ -1447,6 +1457,15 @@ export function PomodoroTimer({
   // State-protected mode change: prevents accidental resets while active
   const applyModeChange = useCallback(
     (newMode: TimerMode) => {
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current);
+        completionTimeoutRef.current = null;
+      }
+      scheduledEndTimeRef.current = null;
+      if (workerRef.current) {
+        workerRef.current.postMessage({ type: "stop" });
+      }
+
       setMode(newMode);
       const duration = modeDurations[newMode];
 

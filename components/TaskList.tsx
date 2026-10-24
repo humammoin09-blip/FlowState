@@ -103,6 +103,10 @@ export default function TaskList(props?: TaskListProps) {
             typeof window !== "undefined"
               ? localStorage.getItem(`task_timer_${t.id}`)
               : null;
+          const savedEndTime =
+            typeof window !== "undefined"
+              ? localStorage.getItem(`task_timer_end_${t.id}`)
+              : null;
           const isTaskCompleted = Boolean(
             t.completed ||
               t.remaining_seconds === 0 ||
@@ -129,7 +133,9 @@ export default function TaskList(props?: TaskListProps) {
           const defaultMins = parseInt(rawDuration || "5", 10) || 5;
 
           let remaining: number;
-          if (savedTime !== null) {
+          if (savedEndTime !== null) {
+            remaining = Math.max(0, Math.ceil((Number(savedEndTime) - Date.now()) / 1000));
+          } else if (savedTime !== null) {
             remaining = parseInt(savedTime, 10);
           } else if (t.remaining_seconds !== undefined && t.remaining_seconds !== null) {
             remaining = t.remaining_seconds;
@@ -141,6 +147,7 @@ export default function TaskList(props?: TaskListProps) {
             if (typeof window !== "undefined") {
               localStorage.setItem(`task_timer_${t.id}`, "0");
               localStorage.setItem(`task_completed_${t.id}`, "true");
+              localStorage.removeItem(`task_timer_end_${t.id}`);
             }
             return {
               ...t,
@@ -149,10 +156,6 @@ export default function TaskList(props?: TaskListProps) {
               remainingSeconds: 0,
               remaining_seconds: 0,
             };
-          }
-
-          if (typeof window !== "undefined") {
-            localStorage.removeItem(`task_timer_end_${t.id}`);
           }
 
           return {
@@ -175,6 +178,7 @@ export default function TaskList(props?: TaskListProps) {
             const normalized = parsed.map((t: Task) => {
               const isCompletedSaved = localStorage.getItem(`task_completed_${t.id}`) === "true";
               const savedTime = localStorage.getItem(`task_timer_${t.id}`);
+              const savedEndTime = localStorage.getItem(`task_timer_end_${t.id}`);
               const rawDuration = decodeTaskDuration(t.duration);
               if (t.completed || t.remaining_seconds === 0 || isCompletedSaved || savedTime === "0") {
                 return {
@@ -186,12 +190,19 @@ export default function TaskList(props?: TaskListProps) {
                 };
               }
               const defaultMins = parseInt(rawDuration || "5", 10) || 5;
-              const rem = savedTime !== null ? parseInt(savedTime, 10) : (t.remainingSeconds ?? defaultMins * 60);
+              let rem: number;
+              if (savedEndTime !== null) {
+                rem = Math.max(0, Math.ceil((Number(savedEndTime) - Date.now()) / 1000));
+              } else if (savedTime !== null) {
+                rem = parseInt(savedTime, 10);
+              } else {
+                rem = t.remainingSeconds ?? defaultMins * 60;
+              }
               return {
                 ...t,
                 duration: rawDuration,
-                completed: false,
-                remainingSeconds: isNaN(rem) ? defaultMins * 60 : rem,
+                completed: rem <= 0,
+                remainingSeconds: isNaN(rem) ? defaultMins * 60 : Math.max(0, rem),
               };
             });
             setTasks(normalized);
@@ -231,7 +242,6 @@ export default function TaskList(props?: TaskListProps) {
   }, [fetchTasks]);
 
   const [isFocusRunning, setIsFocusRunning] = useState<boolean>(false);
-  const lastTickTimeRef = React.useRef<number | null>(null);
 
   const checkFocusRunning = useCallback(() => {
     if (typeof window === "undefined") return false;
@@ -250,88 +260,61 @@ export default function TaskList(props?: TaskListProps) {
     syncFocusState();
     window.addEventListener("storage", syncFocusState);
     window.addEventListener("focus", syncFocusState);
-    window.addEventListener("visibilitychange", syncFocusState);
+    document.addEventListener("visibilitychange", syncFocusState);
 
     return () => {
       window.removeEventListener("storage", syncFocusState);
       window.removeEventListener("focus", syncFocusState);
-      window.removeEventListener("visibilitychange", syncFocusState);
+      document.removeEventListener("visibilitychange", syncFocusState);
     };
   }, [checkFocusRunning]);
 
-  // Countdown timer interval - only decrements while active focus session is running
+  // Timestamp-based countdown timer - persists across tabs and calculates exact elapsed time
   useEffect(() => {
-    if (!isFocusRunning) {
-      lastTickTimeRef.current = null;
-      return;
-    }
-
-    if (!lastTickTimeRef.current) {
-      lastTickTimeRef.current = Date.now();
-    }
-
     const tick = () => {
-      if (!checkFocusRunning()) {
-        lastTickTimeRef.current = null;
-        return;
-      }
-
+      const focusRunning = checkFocusRunning();
       const now = Date.now();
-      if (!lastTickTimeRef.current) {
-        lastTickTimeRef.current = now;
+
+      if (!focusRunning) {
+        // When focus is paused or stopped: save remaining time and clear task_timer_end_
+        setTasks((prevTasks) => {
+          let hasChanges = false;
+          const nextTasks = prevTasks.map((task) => {
+            if (task.completed || task.remainingSeconds === 0) return task;
+            const endVal = typeof window !== "undefined" ? localStorage.getItem(`task_timer_end_${task.id}`) : null;
+            if (endVal) {
+              hasChanges = true;
+              const rem = Math.max(0, Math.ceil((Number(endVal) - now) / 1000));
+              if (typeof window !== "undefined") {
+                localStorage.setItem(`task_timer_${task.id}`, rem.toString());
+                localStorage.removeItem(`task_timer_end_${task.id}`);
+              }
+              return { ...task, remainingSeconds: rem };
+            }
+            return task;
+          });
+          if (hasChanges && typeof window !== "undefined") {
+            localStorage.setItem("flowstate_cached_tasks", JSON.stringify(nextTasks));
+          }
+          return nextTasks;
+        });
         return;
       }
-
-      const deltaMs = now - lastTickTimeRef.current;
-      const deltaSecs = Math.floor(deltaMs / 1000);
-      if (deltaSecs < 1) return;
-
-      lastTickTimeRef.current += deltaSecs * 1000;
 
       const justCompletedTaskIds: string[] = [];
 
       setTasks((prevTasks) => {
         const nextTasks = prevTasks.map((task) => {
-          // Guard at the top: skip already completed or 0-remaining tasks
+          // Skip already completed or 0-remaining tasks
           if (task.completed || task.remainingSeconds === 0) return task;
 
-          let currentRemaining = task.remainingSeconds;
-          if (currentRemaining === undefined) {
-            // Check localStorage task_completed BEFORE fallback logic
-            const isCompletedSaved =
-              typeof window !== "undefined" &&
-              localStorage.getItem(`task_completed_${task.id}`) === "true";
-            if (isCompletedSaved) {
-              if (typeof window !== "undefined") {
-                localStorage.setItem(`task_timer_${task.id}`, "0");
-              }
-              return {
-                ...task,
-                completed: true,
-                remainingSeconds: 0,
-                remaining_seconds: 0,
-              };
-            }
-
-            const savedTime =
-              typeof window !== "undefined"
-                ? localStorage.getItem(`task_timer_${task.id}`)
-                : null;
-            const defaultMins = parseInt(task.duration || "5", 10) || 5;
-
-            if (savedTime !== null) {
-              currentRemaining = parseInt(savedTime, 10);
-            } else if (task.remaining_seconds !== undefined && task.remaining_seconds !== null) {
-              currentRemaining = task.remaining_seconds;
-            } else {
-              currentRemaining = defaultMins * 60;
-            }
-          }
-
-          if (currentRemaining <= 0) {
+          const isCompletedSaved =
+            typeof window !== "undefined" &&
+            localStorage.getItem(`task_completed_${task.id}`) === "true";
+          if (isCompletedSaved) {
             if (typeof window !== "undefined") {
               localStorage.setItem(`task_timer_${task.id}`, "0");
-              localStorage.setItem(`task_completed_${task.id}`, "true");
+              localStorage.removeItem(`task_timer_end_${task.id}`);
             }
             return {
               ...task,
@@ -341,12 +324,39 @@ export default function TaskList(props?: TaskListProps) {
             };
           }
 
-          const currentTime = Math.max(0, currentRemaining - deltaSecs);
-          console.log('MIT tick:', currentTime, Date.now());
+          let endTime: number;
+          const savedEnd = typeof window !== "undefined" ? localStorage.getItem(`task_timer_end_${task.id}`) : null;
+
+          if (savedEnd) {
+            endTime = Number(savedEnd);
+          } else {
+            // Task starting: save endTime = Date.now() + (durationInSeconds * 1000)
+            const savedTime = typeof window !== "undefined" ? localStorage.getItem(`task_timer_${task.id}`) : null;
+            const defaultMins = parseInt(task.duration || "5", 10) || 5;
+            let durationInSeconds: number;
+
+            if (task.remainingSeconds !== undefined && task.remainingSeconds > 0) {
+              durationInSeconds = task.remainingSeconds;
+            } else if (savedTime !== null && parseInt(savedTime, 10) > 0) {
+              durationInSeconds = parseInt(savedTime, 10);
+            } else if (task.remaining_seconds !== undefined && task.remaining_seconds !== null && task.remaining_seconds > 0) {
+              durationInSeconds = task.remaining_seconds;
+            } else {
+              durationInSeconds = defaultMins * 60;
+            }
+
+            endTime = now + durationInSeconds * 1000;
+            if (typeof window !== "undefined") {
+              localStorage.setItem(`task_timer_end_${task.id}`, String(endTime));
+              localStorage.setItem(`task_timer_${task.id}`, String(durationInSeconds));
+            }
+          }
+
+          // Calculate remaining time using Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
+          const currentTime = Math.max(0, Math.ceil((endTime - now) / 1000));
 
           if (typeof window !== "undefined") {
             localStorage.setItem(`task_timer_${task.id}`, currentTime.toString());
-            localStorage.removeItem(`task_timer_end_${task.id}`);
           }
 
           // Trigger push notification at 120s (2m) and 60s (1m) remaining
@@ -364,8 +374,6 @@ export default function TaskList(props?: TaskListProps) {
           }
 
           if (currentTime <= 0) {
-            // IMMEDIATE LOCAL STORAGE PERSISTENCE:
-            // Do NOT remove item — set to '0' and mark completed: true
             if (typeof window !== "undefined") {
               localStorage.setItem(`task_timer_${task.id}`, "0");
               localStorage.setItem(`task_completed_${task.id}`, "true");
@@ -395,7 +403,6 @@ export default function TaskList(props?: TaskListProps) {
               }
             }
 
-            // Immediately mark completed in local state
             return {
               ...task,
               completed: true,
@@ -414,7 +421,6 @@ export default function TaskList(props?: TaskListProps) {
         return nextTasks;
       });
 
-      // Synchronously triggered async persistence to Supabase with race-condition guard
       if (justCompletedTaskIds.length > 0) {
         justCompletedTaskIds.forEach(async (taskId) => {
           await persistTaskCompletion(taskId);
@@ -422,16 +428,21 @@ export default function TaskList(props?: TaskListProps) {
       }
     };
 
+    tick();
     const timer = setInterval(tick, 1000);
+    document.addEventListener("visibilitychange", tick);
     window.addEventListener("focus", tick);
-    window.addEventListener("visibilitychange", tick);
+    window.addEventListener("storage", tick);
+    window.addEventListener("flowstate_timer_started", tick);
 
     return () => {
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
       window.removeEventListener("focus", tick);
-      window.removeEventListener("visibilitychange", tick);
+      window.removeEventListener("storage", tick);
+      window.removeEventListener("flowstate_timer_started", tick);
     };
-  }, [isFocusRunning, checkFocusRunning, setTasks]);
+  }, [checkFocusRunning, setTasks]);
 
   const addTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -486,9 +497,14 @@ export default function TaskList(props?: TaskListProps) {
       if (error) throw error;
       if (data) {
         const newTaskId = data[0].id;
+        const focusRunning = checkFocusRunning();
         localStorage.setItem(`task_timer_${newTaskId}`, initialSeconds.toString());
         localStorage.setItem(`task_completed_${newTaskId}`, "false");
-        localStorage.removeItem(`task_timer_end_${newTaskId}`);
+        if (focusRunning) {
+          localStorage.setItem(`task_timer_end_${newTaskId}`, String(Date.now() + initialSeconds * 1000));
+        } else {
+          localStorage.removeItem(`task_timer_end_${newTaskId}`);
+        }
 
         const newTask: Task = {
           ...data[0],
@@ -506,9 +522,14 @@ export default function TaskList(props?: TaskListProps) {
       }
     } catch (error) {
       console.warn("Supabase insert failed, persisting task to local storage:", error);
+      const focusRunning = checkFocusRunning();
       localStorage.setItem(`task_timer_${fallbackId}`, initialSeconds.toString());
       localStorage.setItem(`task_completed_${fallbackId}`, "false");
-      localStorage.removeItem(`task_timer_end_${fallbackId}`);
+      if (focusRunning) {
+        localStorage.setItem(`task_timer_end_${fallbackId}`, String(Date.now() + initialSeconds * 1000));
+      } else {
+        localStorage.removeItem(`task_timer_end_${fallbackId}`);
+      }
 
       const fallbackTask: Task = {
         id: fallbackId,
@@ -544,6 +565,11 @@ export default function TaskList(props?: TaskListProps) {
       if (typeof window !== "undefined") {
         localStorage.setItem(`task_completed_${id}`, "false");
         localStorage.setItem(`task_timer_${id}`, defaultSecs.toString());
+        if (checkFocusRunning()) {
+          localStorage.setItem(`task_timer_end_${id}`, String(Date.now() + defaultSecs * 1000));
+        } else {
+          localStorage.removeItem(`task_timer_end_${id}`);
+        }
       }
     }
 
