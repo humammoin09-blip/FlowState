@@ -293,7 +293,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                 // Look up task title from saved tasks
                 let taskTitle = "Task";
                 try {
-                  const tasksRaw = localStorage.getItem("flowstate_tasks");
+                  const tasksRaw = localStorage.getItem("flowstate_cached_tasks") || localStorage.getItem("flowstate_tasks");
                   if (tasksRaw) {
                     const parsedTasks = JSON.parse(tasksRaw);
                     if (Array.isArray(parsedTasks)) {
@@ -308,7 +308,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                 }
 
                 addNotification({
-                  title: `MIT Task '${taskTitle}' timer hit 0:00.`,
+                  title: `Task '${taskTitle}' has reached 0:00!`,
                   type: "task",
                 });
               }

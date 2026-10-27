@@ -49,6 +49,451 @@ export default function TaskList(props?: TaskListProps) {
   const showAlert = tasks.some((t) => !t.completed && t.priority === "High");
   const notifiedTaskTimesRef = React.useRef<Set<string>>(new Set());
 
+  const [isFocusRunning, setIsFocusRunning] = useState<boolean>(false);
+
+  const checkFocusRunning = useCallback(() => {
+    if (typeof window === "undefined") return false;
+    const running = localStorage.getItem("flowstate_pomodoro_running") === "true";
+    const mode = localStorage.getItem("flowstate_pomodoro_mode") || "focus";
+    const isFocusActive = props?.isFocusActive !== false;
+    return running && mode === "focus" && isFocusActive;
+  }, [props?.isFocusActive]);
+
+  // Reactively track focus running state from props, localStorage, and cross-tab storage events
+  useEffect(() => {
+    const syncFocusState = () => {
+      setIsFocusRunning(checkFocusRunning());
+    };
+
+    syncFocusState();
+    window.addEventListener("storage", syncFocusState);
+    window.addEventListener("focus", syncFocusState);
+    document.addEventListener("visibilitychange", syncFocusState);
+
+    return () => {
+      window.removeEventListener("storage", syncFocusState);
+      window.removeEventListener("focus", syncFocusState);
+      document.removeEventListener("visibilitychange", syncFocusState);
+    };
+  }, [checkFocusRunning]);
+
+  // Web Worker & Timeout refs for cross-tab background MIT notifications
+  const workerRef = React.useRef<Worker | null>(null);
+  const timeoutsRef = React.useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const scheduledTasksRef = React.useRef<Map<string, number>>(new Map());
+  const notifiedEventsRef = React.useRef<Set<string>>(new Set());
+  const toastedEventsRef = React.useRef<Set<string>>(new Set());
+  const tasksRef = React.useRef<Task[]>(tasks);
+
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
+
+  const requestNotificationPermission = useCallback(() => {
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
+  const clearTaskTimeouts = useCallback((taskId: string) => {
+    const t2m = timeoutsRef.current.get(`${taskId}_2min`);
+    if (t2m) {
+      clearTimeout(t2m);
+      timeoutsRef.current.delete(`${taskId}_2min`);
+    }
+    const t1m = timeoutsRef.current.get(`${taskId}_1min`);
+    if (t1m) {
+      clearTimeout(t1m);
+      timeoutsRef.current.delete(`${taskId}_1min`);
+    }
+    const t0m = timeoutsRef.current.get(`${taskId}_0min`);
+    if (t0m) {
+      clearTimeout(t0m);
+      timeoutsRef.current.delete(`${taskId}_0min`);
+    }
+  }, []);
+
+  const cancelTaskTimeouts = useCallback(
+    (taskId: string) => {
+      clearTaskTimeouts(taskId);
+      scheduledTasksRef.current.delete(taskId);
+      if (workerRef.current) {
+        try {
+          workerRef.current.postMessage({
+            type: "CANCEL_TASK",
+            taskId,
+          });
+        } catch {
+          // ignore
+        }
+      }
+    },
+    [clearTaskTimeouts]
+  );
+
+  const cancelAllTaskTimeouts = useCallback(() => {
+    timeoutsRef.current.forEach((t) => clearTimeout(t));
+    timeoutsRef.current.clear();
+    scheduledTasksRef.current.clear();
+    if (workerRef.current) {
+      try {
+        workerRef.current.postMessage({
+          type: "STOP_ALL",
+        });
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
+  const handleThresholdTrigger = useCallback(
+    (
+      taskId: string,
+      taskTitle: string,
+      threshold: "2min" | "1min" | "0min",
+      endTime: number
+    ) => {
+      const dedupKey = `${taskId}_${threshold}_${endTime}`;
+      const storageKey = `flowstate_mit_notified_${dedupKey}`;
+
+      if (notifiedEventsRef.current.has(dedupKey)) return;
+      if (typeof window !== "undefined" && localStorage.getItem(storageKey) === "true") {
+        notifiedEventsRef.current.add(dedupKey);
+        return;
+      }
+
+      notifiedEventsRef.current.add(dedupKey);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(storageKey, "true");
+      }
+
+      let message = "";
+      if (threshold === "2min") {
+        message = `Task '${taskTitle}' is ending soon! Only 2 minutes left.`;
+      } else if (threshold === "1min") {
+        message = `Task '${taskTitle}' is ending soon! Only 1 minute left.`;
+      } else if (threshold === "0min") {
+        message = `Task '${taskTitle}' has reached 0:00!`;
+      }
+
+      // 1. Browser OS Web Notification
+      if (
+        typeof window !== "undefined" &&
+        "Notification" in window &&
+        Notification.permission === "granted"
+      ) {
+        try {
+          new Notification("FlowState MIT Alert ⚡", {
+            body: message,
+            icon: "/favicon.ico",
+          });
+        } catch (err) {
+          console.warn("MIT Task Notification error:", err);
+        }
+      }
+
+      // 2. In-App Toast
+      if (typeof window !== "undefined") {
+        const isVisible = typeof document !== "undefined" && document.visibilityState === "visible";
+
+        if (threshold === "0min") {
+          window.dispatchEvent(
+            new CustomEvent("flowstate_new_notification", {
+              detail: {
+                title: message,
+                type: "task",
+              },
+            })
+          );
+          if (isVisible) {
+            toastedEventsRef.current.add(dedupKey);
+            localStorage.setItem(`flowstate_mit_toasted_${dedupKey}`, "true");
+          }
+        } else if (isVisible) {
+          window.dispatchEvent(
+            new CustomEvent("flowstate_new_notification", {
+              detail: {
+                title: message,
+                type: "task",
+              },
+            })
+          );
+          toastedEventsRef.current.add(dedupKey);
+          localStorage.setItem(`flowstate_mit_toasted_${dedupKey}`, "true");
+        }
+      }
+    },
+    []
+  );
+
+  const scheduleTaskNotifications = useCallback(
+    (taskId: string, taskTitle: string, endTime: number) => {
+      if (typeof window === "undefined") return;
+
+      requestNotificationPermission();
+
+      if (scheduledTasksRef.current.get(taskId) === endTime) {
+        return;
+      }
+      scheduledTasksRef.current.set(taskId, endTime);
+
+      const now = Date.now();
+      const delay2m = endTime - 120000 - now;
+      const delay1m = endTime - 60000 - now;
+      const delay0m = endTime - now;
+
+      clearTaskTimeouts(taskId);
+
+      // Pre-mark past thresholds so they don't fire retroactively
+      if (delay2m <= 0) {
+        toastedEventsRef.current.add(`${taskId}_2min_${endTime}`);
+        localStorage.setItem(`flowstate_mit_toasted_${taskId}_2min_${endTime}`, "true");
+      }
+      if (delay1m <= 0) {
+        toastedEventsRef.current.add(`${taskId}_1min_${endTime}`);
+        localStorage.setItem(`flowstate_mit_toasted_${taskId}_1min_${endTime}`, "true");
+      }
+
+      // 1. Strict foreground setTimeout
+      if (delay2m > 0) {
+        const t2m = setTimeout(() => {
+          handleThresholdTrigger(taskId, taskTitle, "2min", endTime);
+        }, delay2m);
+        timeoutsRef.current.set(`${taskId}_2min`, t2m);
+      }
+
+      if (delay1m > 0) {
+        const t1m = setTimeout(() => {
+          handleThresholdTrigger(taskId, taskTitle, "1min", endTime);
+        }, delay1m);
+        timeoutsRef.current.set(`${taskId}_1min`, t1m);
+      }
+
+      if (delay0m > 0) {
+        const t0m = setTimeout(() => {
+          handleThresholdTrigger(taskId, taskTitle, "0min", endTime);
+        }, delay0m);
+        timeoutsRef.current.set(`${taskId}_0min`, t0m);
+      }
+
+      // 2. Background Web Worker (unthrottled background execution)
+      if (workerRef.current) {
+        try {
+          workerRef.current.postMessage({
+            type: "SCHEDULE_TASK",
+            task: {
+              id: taskId,
+              title: taskTitle,
+              endTime,
+              has2m: delay2m > 0,
+              has1m: delay1m > 0,
+              notified2m: delay2m <= 0,
+              notified1m: delay1m <= 0,
+              notified0m: delay0m <= 0,
+            },
+          });
+        } catch (err) {
+          console.warn("Worker task schedule notice:", err);
+        }
+      }
+    },
+    [clearTaskTimeouts, handleThresholdTrigger, requestNotificationPermission]
+  );
+
+  // Dedicated Web Worker lifecycle to prevent background tab timer throttling
+  useEffect(() => {
+    let worker: Worker | null = null;
+    let workerBlobUrl: string | null = null;
+
+    try {
+      if (typeof window !== "undefined" && typeof Worker !== "undefined") {
+        const workerScript = `
+          var activeTasks = [];
+          var intervalId = null;
+
+          function checkTasks() {
+            var now = Date.now();
+            for (var i = 0; i < activeTasks.length; i++) {
+              var t = activeTasks[i];
+              if (!t || !t.endTime) continue;
+
+              // Check 2 minutes remaining (endTime - 120000)
+              if (t.has2m && !t.notified2m && now >= t.endTime - 120000 && now < t.endTime) {
+                t.notified2m = true;
+                self.postMessage({
+                  type: 'TASK_ALERT',
+                  taskId: t.id,
+                  taskTitle: t.title,
+                  threshold: '2min',
+                  endTime: t.endTime
+                });
+              }
+
+              // Check 1 minute remaining (endTime - 60000)
+              if (t.has1m && !t.notified1m && now >= t.endTime - 60000 && now < t.endTime) {
+                t.notified1m = true;
+                self.postMessage({
+                  type: 'TASK_ALERT',
+                  taskId: t.id,
+                  taskTitle: t.title,
+                  threshold: '1min',
+                  endTime: t.endTime
+                });
+              }
+
+              // Check 0 minutes remaining (at or past endTime)
+              if (!t.notified0m && now >= t.endTime) {
+                t.notified0m = true;
+                self.postMessage({
+                  type: 'TASK_ALERT',
+                  taskId: t.id,
+                  taskTitle: t.title,
+                  threshold: '0min',
+                  endTime: t.endTime
+                });
+              }
+            }
+          }
+
+          self.onmessage = function(e) {
+            if (!e.data) return;
+            var msg = e.data;
+
+            if (msg.type === 'SCHEDULE_TASK') {
+              var task = msg.task;
+              var idx = -1;
+              for (var j = 0; j < activeTasks.length; j++) {
+                if (activeTasks[j].id === task.id) {
+                  idx = j;
+                  break;
+                }
+              }
+              if (idx >= 0) {
+                activeTasks[idx] = task;
+              } else {
+                activeTasks.push(task);
+              }
+              if (!intervalId) {
+                intervalId = setInterval(checkTasks, 500);
+              }
+              checkTasks();
+            } else if (msg.type === 'CANCEL_TASK') {
+              activeTasks = activeTasks.filter(function(t) { return t.id !== msg.taskId; });
+              if (activeTasks.length === 0 && intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+              }
+            } else if (msg.type === 'STOP_ALL') {
+              activeTasks = [];
+              if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+              }
+            }
+          };
+        `;
+
+        const blob = new Blob([workerScript], { type: "application/javascript" });
+        workerBlobUrl = URL.createObjectURL(blob);
+        worker = new Worker(workerBlobUrl);
+        workerRef.current = worker;
+
+        worker.onmessage = (e) => {
+          if (e.data && e.data.type === "TASK_ALERT") {
+            const { taskId, taskTitle, threshold, endTime } = e.data;
+            handleThresholdTrigger(taskId, taskTitle, threshold, endTime);
+          }
+        };
+      }
+    } catch (err) {
+      console.warn("MIT Task Worker initialization notice:", err);
+    }
+
+    return () => {
+      if (worker) {
+        worker.postMessage({ type: "STOP_ALL" });
+        worker.terminate();
+        workerRef.current = null;
+      }
+      if (workerBlobUrl) {
+        URL.revokeObjectURL(workerBlobUrl);
+      }
+    };
+  }, [handleThresholdTrigger]);
+
+  const checkVisibilityFallback = useCallback(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    if (document.visibilityState !== "visible") return;
+    if (!checkFocusRunning()) return;
+
+    const now = Date.now();
+    const currentTasks = tasksRef.current;
+
+    currentTasks.forEach((task) => {
+      if (task.completed) return;
+      const savedEnd = localStorage.getItem(`task_timer_end_${task.id}`);
+      if (!savedEnd) return;
+      const endTime = Number(savedEnd);
+      const currentTime = Math.max(0, Math.ceil((endTime - now) / 1000));
+
+      if (currentTime <= 0) {
+        const key0m = `${task.id}_0min_${endTime}`;
+        if (
+          !toastedEventsRef.current.has(key0m) &&
+          localStorage.getItem(`flowstate_mit_toasted_${key0m}`) !== "true"
+        ) {
+          toastedEventsRef.current.add(key0m);
+          localStorage.setItem(`flowstate_mit_toasted_${key0m}`, "true");
+          window.dispatchEvent(
+            new CustomEvent("flowstate_new_notification", {
+              detail: {
+                title: `Task '${task.title}' has reached 0:00!`,
+                type: "task",
+              },
+            })
+          );
+        }
+        toastedEventsRef.current.add(`${task.id}_1min_${endTime}`);
+        toastedEventsRef.current.add(`${task.id}_2min_${endTime}`);
+      } else if (currentTime <= 60) {
+        const key1m = `${task.id}_1min_${endTime}`;
+        if (
+          !toastedEventsRef.current.has(key1m) &&
+          localStorage.getItem(`flowstate_mit_toasted_${key1m}`) !== "true"
+        ) {
+          toastedEventsRef.current.add(key1m);
+          localStorage.setItem(`flowstate_mit_toasted_${key1m}`, "true");
+          window.dispatchEvent(
+            new CustomEvent("flowstate_new_notification", {
+              detail: {
+                title: `Task '${task.title}' is ending soon! Only 1 minute left.`,
+                type: "task",
+              },
+            })
+          );
+        }
+        toastedEventsRef.current.add(`${task.id}_2min_${endTime}`);
+      } else if (currentTime <= 120) {
+        const key2m = `${task.id}_2min_${endTime}`;
+        if (
+          !toastedEventsRef.current.has(key2m) &&
+          localStorage.getItem(`flowstate_mit_toasted_${key2m}`) !== "true"
+        ) {
+          toastedEventsRef.current.add(key2m);
+          localStorage.setItem(`flowstate_mit_toasted_${key2m}`, "true");
+          window.dispatchEvent(
+            new CustomEvent("flowstate_new_notification", {
+              detail: {
+                title: `Task '${task.title}' is ending soon! Only 2 minutes left.`,
+                type: "task",
+              },
+            })
+          );
+        }
+      }
+    });
+  }, [checkFocusRunning]);
+
   const persistTaskCompletion = async (taskId: string) => {
     try {
       const { error } = await supabase
@@ -241,34 +686,6 @@ export default function TaskList(props?: TaskListProps) {
     };
   }, [fetchTasks]);
 
-  const [isFocusRunning, setIsFocusRunning] = useState<boolean>(false);
-
-  const checkFocusRunning = useCallback(() => {
-    if (typeof window === "undefined") return false;
-    const running = localStorage.getItem("flowstate_pomodoro_running") === "true";
-    const mode = localStorage.getItem("flowstate_pomodoro_mode") || "focus";
-    const isFocusActive = props?.isFocusActive !== false;
-    return running && mode === "focus" && isFocusActive;
-  }, [props?.isFocusActive]);
-
-  // Reactively track focus running state from props, localStorage, and cross-tab storage events
-  useEffect(() => {
-    const syncFocusState = () => {
-      setIsFocusRunning(checkFocusRunning());
-    };
-
-    syncFocusState();
-    window.addEventListener("storage", syncFocusState);
-    window.addEventListener("focus", syncFocusState);
-    document.addEventListener("visibilitychange", syncFocusState);
-
-    return () => {
-      window.removeEventListener("storage", syncFocusState);
-      window.removeEventListener("focus", syncFocusState);
-      document.removeEventListener("visibilitychange", syncFocusState);
-    };
-  }, [checkFocusRunning]);
-
   // Timestamp-based countdown timer - persists across tabs and calculates exact elapsed time
   useEffect(() => {
     const tick = () => {
@@ -276,6 +693,7 @@ export default function TaskList(props?: TaskListProps) {
       const now = Date.now();
 
       if (!focusRunning) {
+        cancelAllTaskTimeouts();
         // When focus is paused or stopped: save remaining time and clear task_timer_end_
         setTasks((prevTasks) => {
           let hasChanges = false;
@@ -352,25 +770,14 @@ export default function TaskList(props?: TaskListProps) {
             }
           }
 
+          // Trigger Notifications on Task Start / Ensure background timeouts are scheduled
+          scheduleTaskNotifications(task.id, task.title, endTime);
+
           // Calculate remaining time using Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
           const currentTime = Math.max(0, Math.ceil((endTime - now) / 1000));
 
           if (typeof window !== "undefined") {
             localStorage.setItem(`task_timer_${task.id}`, currentTime.toString());
-          }
-
-          // Trigger push notification at 120s (2m) and 60s (1m) remaining
-          if (currentTime === 120 || currentTime === 60) {
-            const notifyKey = `${task.id}_${currentTime}`;
-            if (!notifiedTaskTimesRef.current.has(notifyKey)) {
-              notifiedTaskTimesRef.current.add(notifyKey);
-              if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-                new Notification("FlowState MIT Alert ⚡", {
-                  body: `Task "${task.title}" is ending soon! Only ${Math.ceil(currentTime / 60)} minute${currentTime > 60 ? "s" : ""} left.`,
-                  icon: "/favicon.ico",
-                });
-              }
-            }
           }
 
           if (currentTime <= 0) {
@@ -382,26 +789,7 @@ export default function TaskList(props?: TaskListProps) {
 
             justCompletedTaskIds.push(task.id);
 
-            const notifyKey = `${task.id}_0`;
-            if (!notifiedTaskTimesRef.current.has(notifyKey)) {
-              notifiedTaskTimesRef.current.add(notifyKey);
-              if (typeof window !== "undefined") {
-                window.dispatchEvent(
-                  new CustomEvent("flowstate_new_notification", {
-                    detail: {
-                      title: `MIT Task '${task.title}' timer hit 0:00.`,
-                      type: "task",
-                    },
-                  })
-                );
-                if ("Notification" in window && Notification.permission === "granted") {
-                  new Notification("FlowState MIT Alert ⚡", {
-                    body: `Task "${task.title}" has reached 0:00!`,
-                    icon: "/favicon.ico",
-                  });
-                }
-              }
-            }
+            handleThresholdTrigger(task.id, task.title, "0min", endTime);
 
             return {
               ...task,
@@ -428,25 +816,51 @@ export default function TaskList(props?: TaskListProps) {
       }
     };
 
+    const onVisibilityChange = () => {
+      tick();
+      checkVisibilityFallback();
+    };
+
+    const onFocus = () => {
+      tick();
+      checkVisibilityFallback();
+    };
+
+    const onTimerStarted = () => {
+      requestNotificationPermission();
+      tick();
+    };
+
     tick();
+    checkVisibilityFallback();
     const timer = setInterval(tick, 1000);
-    document.addEventListener("visibilitychange", tick);
-    window.addEventListener("focus", tick);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onFocus);
     window.addEventListener("storage", tick);
-    window.addEventListener("flowstate_timer_started", tick);
+    window.addEventListener("flowstate_timer_started", onTimerStarted);
 
     return () => {
       clearInterval(timer);
-      document.removeEventListener("visibilitychange", tick);
-      window.removeEventListener("focus", tick);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onFocus);
       window.removeEventListener("storage", tick);
-      window.removeEventListener("flowstate_timer_started", tick);
+      window.removeEventListener("flowstate_timer_started", onTimerStarted);
     };
-  }, [checkFocusRunning, setTasks]);
+  }, [
+    checkFocusRunning,
+    setTasks,
+    scheduleTaskNotifications,
+    handleThresholdTrigger,
+    cancelAllTaskTimeouts,
+    checkVisibilityFallback,
+    requestNotificationPermission,
+  ]);
 
   const addTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
+
+    requestNotificationPermission();
 
     const { data: authData } = await supabase.auth.getUser();
     const activeUid =
@@ -501,7 +915,9 @@ export default function TaskList(props?: TaskListProps) {
         localStorage.setItem(`task_timer_${newTaskId}`, initialSeconds.toString());
         localStorage.setItem(`task_completed_${newTaskId}`, "false");
         if (focusRunning) {
-          localStorage.setItem(`task_timer_end_${newTaskId}`, String(Date.now() + initialSeconds * 1000));
+          const taskEndTime = Date.now() + initialSeconds * 1000;
+          localStorage.setItem(`task_timer_end_${newTaskId}`, String(taskEndTime));
+          scheduleTaskNotifications(newTaskId, newTaskTitle, taskEndTime);
         } else {
           localStorage.removeItem(`task_timer_end_${newTaskId}`);
         }
@@ -526,7 +942,9 @@ export default function TaskList(props?: TaskListProps) {
       localStorage.setItem(`task_timer_${fallbackId}`, initialSeconds.toString());
       localStorage.setItem(`task_completed_${fallbackId}`, "false");
       if (focusRunning) {
-        localStorage.setItem(`task_timer_end_${fallbackId}`, String(Date.now() + initialSeconds * 1000));
+        const taskEndTime = Date.now() + initialSeconds * 1000;
+        localStorage.setItem(`task_timer_end_${fallbackId}`, String(taskEndTime));
+        scheduleTaskNotifications(fallbackId, newTaskTitle, taskEndTime);
       } else {
         localStorage.removeItem(`task_timer_end_${fallbackId}`);
       }
@@ -556,6 +974,7 @@ export default function TaskList(props?: TaskListProps) {
     const defaultSecs = (parseInt(task?.duration || "5", 10) || 5) * 60;
 
     if (nextStatus) {
+      cancelTaskTimeouts(id);
       if (typeof window !== "undefined") {
         localStorage.setItem(`task_timer_${id}`, "0");
         localStorage.setItem(`task_completed_${id}`, "true");
@@ -566,9 +985,13 @@ export default function TaskList(props?: TaskListProps) {
         localStorage.setItem(`task_completed_${id}`, "false");
         localStorage.setItem(`task_timer_${id}`, defaultSecs.toString());
         if (checkFocusRunning()) {
-          localStorage.setItem(`task_timer_end_${id}`, String(Date.now() + defaultSecs * 1000));
+          requestNotificationPermission();
+          const taskEndTime = Date.now() + defaultSecs * 1000;
+          localStorage.setItem(`task_timer_end_${id}`, String(taskEndTime));
+          scheduleTaskNotifications(id, task?.title || "Task", taskEndTime);
         } else {
           localStorage.removeItem(`task_timer_end_${id}`);
+          cancelTaskTimeouts(id);
         }
       }
     }
@@ -616,6 +1039,7 @@ export default function TaskList(props?: TaskListProps) {
   };
 
   const deleteTask = async (id: string) => {
+    cancelTaskTimeouts(id);
     if (typeof window !== "undefined") {
       localStorage.removeItem(`task_timer_${id}`);
       localStorage.removeItem(`task_completed_${id}`);
@@ -642,6 +1066,8 @@ export default function TaskList(props?: TaskListProps) {
     if (completedTasks.length === 0) return;
 
     const completedIds = completedTasks.map((t) => t.id);
+
+    completedIds.forEach((id) => cancelTaskTimeouts(id));
 
     if (typeof window !== "undefined") {
       completedIds.forEach((id) => {

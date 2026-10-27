@@ -32,8 +32,6 @@ export function ProfileModal({
   setUserAvatar: setUserAvatarProp,
   onOpenAuth,
 }: ProfileModalProps) {
-  if (!isOpen) return null;
-
   const [name, setName] = useState(userName);
   const [title, setTitle] = useState(userTitle);
   const [dailyGoal, setDailyGoal] = useState<string>(dailyGoalProp || "6");
@@ -44,6 +42,16 @@ export function ProfileModal({
   const [errorToast, setErrorToast] = useState<string | null>(null);
 
   useEffect(() => {
+    if (errorToast) {
+      const timer = setTimeout(() => {
+        setErrorToast(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorToast]);
+
+  useEffect(() => {
+    if (!isOpen) return;
     setName(userName);
     setTitle(userTitle);
     const savedGoal = localStorage.getItem("flowstate_daily_goal") || dailyGoalProp || "6";
@@ -88,6 +96,26 @@ export function ProfileModal({
       }
     })();
   }, [isOpen, userName, userTitle, dailyGoalProp, userAvatarProp]);
+
+  if (!isOpen) {
+    if (errorToast) {
+      return (
+        <div className="fixed bottom-5 right-5 z-[100] max-w-sm p-3.5 rounded-2xl bg-slate-900 border border-rose-500/40 shadow-2xl flex items-center gap-2.5 text-xs text-rose-300 animate-in fade-in slide-in-from-bottom-2">
+          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          <span className="flex-1">{errorToast}</span>
+          <button
+            type="button"
+            onClick={() => setErrorToast(null)}
+            className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer"
+            aria-label="Dismiss error"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      );
+    }
+    return null;
+  }
 
   const avatars = ["🚀", "⚡", "💻", "🔥", "🎯", "👑", "🦊"];
 
@@ -153,49 +181,48 @@ export function ProfileModal({
     }
   };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    setSaving(true);
     setErrorToast(null);
 
-    try {
-      // 1. Update React state immediately
-      setUserName(name);
-      setUserTitle(title);
-      if (setDailyGoalProp) setDailyGoalProp(dailyGoal);
-      if (setUserAvatarProp) setUserAvatarProp(selectedAvatar);
+    // 1. Optimistic UI update: instantly update React state
+    setUserName(name);
+    setUserTitle(title);
+    if (setDailyGoalProp) setDailyGoalProp(dailyGoal);
+    if (setUserAvatarProp) setUserAvatarProp(selectedAvatar);
 
-      // 2. Fetch active Supabase user/session
-      const { data: authData } = await supabase.auth.getUser();
-      let user = authData?.user || null;
-      if (!user) {
-        const { data: sessionData } = await supabase.auth.getSession();
-        user = sessionData?.session?.user || null;
-      }
+    // 2. Persist to localStorage instantly
+    const activeUserId =
+      typeof window !== "undefined"
+        ? localStorage.getItem("flowstate_active_user_id") || "guest_default"
+        : "guest_default";
 
-      const activeUserId =
-        user?.id ||
-        (typeof window !== "undefined"
-          ? localStorage.getItem("flowstate_active_user_id") || "guest_default"
-          : "guest_default");
+    if (typeof window !== "undefined") {
+      localStorage.setItem("flowstate_user_name", name);
+      localStorage.setItem("flowstate_user_title", title);
+      localStorage.setItem("flowstate_daily_goal", dailyGoal);
+      localStorage.setItem("flowstate_user_avatar", selectedAvatar);
 
-      // 3. Persist locally for instant responsiveness
-      if (typeof window !== "undefined") {
-        localStorage.setItem("flowstate_user_name", name);
-        localStorage.setItem("flowstate_user_title", title);
-        localStorage.setItem("flowstate_daily_goal", dailyGoal);
-        localStorage.setItem("flowstate_user_avatar", selectedAvatar);
+      localStorage.setItem(`flowstate_name_${activeUserId}`, name);
+      localStorage.setItem(`flowstate_title_${activeUserId}`, title);
+      localStorage.setItem(`flowstate_goal_${activeUserId}`, dailyGoal);
+      localStorage.setItem(`flowstate_avatar_${activeUserId}`, selectedAvatar);
+    }
 
-        localStorage.setItem(`flowstate_name_${activeUserId}`, name);
-        localStorage.setItem(`flowstate_title_${activeUserId}`, title);
-        localStorage.setItem(`flowstate_goal_${activeUserId}`, dailyGoal);
-        localStorage.setItem(`flowstate_avatar_${activeUserId}`, selectedAvatar);
-      }
+    // 3. Close the modal immediately & ensure isSaving = false
+    setSaving(false);
+    onClose();
 
-      // 4. If logged in, update auth metadata and user_settings table in Supabase
-      if (user) {
-        // Update user auth metadata
-        try {
+    // 4. Fire Supabase upsert & auth metadata update in the background without blocking the UI
+    (async () => {
+      try {
+        // Fast cached session check (no heavy getUser() network fetch)
+        const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+        if (sessionErr) throw sessionErr;
+        const user = sessionData?.session?.user;
+
+        if (user) {
+          // Update user auth metadata
           const { error: metaError } = await supabase.auth.updateUser({
             data: {
               full_name: name,
@@ -205,15 +232,9 @@ export function ProfileModal({
               daily_goal: dailyGoal,
             },
           });
-          if (metaError) {
-            console.warn("Notice: Supabase auth updateUser metadata notice:", metaError);
-          }
-        } catch (metaErr) {
-          console.warn("Notice: Supabase auth updateUser exception:", metaErr);
-        }
+          if (metaError) throw metaError;
 
-        // Upsert user_settings table safely with onConflict: id
-        try {
+          // Upsert user_settings table safely with onConflict: id
           const { error: settingsError } = await supabase.from("user_settings").upsert(
             {
               id: user.id,
@@ -222,22 +243,24 @@ export function ProfileModal({
             },
             { onConflict: "id" }
           );
-
-          if (settingsError) {
-            console.warn("Notice: user_settings upsert notice:", settingsError);
-          }
-        } catch (settingsCatchErr) {
-          console.warn("Notice: user_settings upsert exception:", settingsCatchErr);
+          if (settingsError) throw settingsError;
+        }
+      } catch (err: any) {
+        console.error("Profile background sync notice:", err);
+        const errorMsg = err?.message || "Failed to save profile changes to cloud. Saved locally.";
+        setErrorToast(errorMsg);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("flowstate_new_notification", {
+              detail: {
+                title: errorMsg,
+                type: "system",
+              },
+            })
+          );
         }
       }
-
-      setSaving(false);
-      onClose();
-    } catch (error: any) {
-      console.error("Profile save error:", error);
-      setSaving(false);
-      setErrorToast(error?.message || "Failed to save profile changes. Please try again.");
-    }
+    })();
   };
 
   return (

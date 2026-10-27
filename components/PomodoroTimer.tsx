@@ -484,6 +484,7 @@ export function PomodoroTimer({
   const scheduledEndTimeRef = useRef<number | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const hasNotifiedCompletionRef = useRef<boolean>(false);
+  const notificationPromiseRef = useRef<Promise<void> | null>(null);
 
   const requestNotificationPermission = useCallback(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
@@ -493,53 +494,91 @@ export function PomodoroTimer({
     }
   }, []);
 
-  const triggerCompletionNotification = useCallback((modeToFinish: TimerMode = "focus") => {
-    if (hasNotifiedCompletionRef.current) return;
-    hasNotifiedCompletionRef.current = true;
-
-    const savedDuration =
-      typeof window !== "undefined"
-        ? localStorage.getItem(STORAGE_KEY_TIMER_DURATION) ||
-          localStorage.getItem("flowstate_current_session_duration") ||
-          localStorage.getItem(STORAGE_KEY_FOCUS_DURATION) ||
-          String(customFocusMins || 25)
-        : String(customFocusMins || 25);
-    const sessionMins = parseInt(savedDuration, 10) || customFocusMins || 25;
-
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("flowstate_new_notification", {
-          detail: {
-            title: `FlowState Session Complete! You completed ${sessionMins} minutes!`,
-            type: "pomodoro",
-          },
-        })
-      );
-    }
-
-    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-      try {
-        const notif = new Notification("FlowState Session Complete!", {
-          body: `You completed ${sessionMins} minutes!`,
-          icon: "/favicon.ico",
-          tag: "flowstate-session-complete",
-          requireInteraction: true,
-        });
-        notif.onclick = () => {
-          window.focus();
-          notif.close();
-          setCelebrationDuration(sessionMins);
-          setCelebrationEndTime(Date.now());
-          setShowCelebration(true);
-          localStorage.removeItem("pending_celebration");
-          localStorage.removeItem("pending_celebration_duration");
-          localStorage.removeItem(STORAGE_KEY_TIMER_END);
-        };
-      } catch (err) {
-        console.warn("Notification error:", err);
+  const triggerCompletionNotification = useCallback(
+    (modeToFinish: TimerMode = "focus"): Promise<void> => {
+      if (notificationPromiseRef.current) {
+        return notificationPromiseRef.current;
       }
-    }
-  }, [customFocusMins]);
+
+      const promise = new Promise<void>((resolve) => {
+        if (hasNotifiedCompletionRef.current) {
+          resolve();
+          return;
+        }
+        hasNotifiedCompletionRef.current = true;
+
+        const savedDuration =
+          typeof window !== "undefined"
+            ? localStorage.getItem(STORAGE_KEY_TIMER_DURATION) ||
+              localStorage.getItem("flowstate_current_session_duration") ||
+              localStorage.getItem(STORAGE_KEY_FOCUS_DURATION) ||
+              String(customFocusMins || 25)
+            : String(customFocusMins || 25);
+        const sessionMins = parseInt(savedDuration, 10) || customFocusMins || 25;
+
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("flowstate_new_notification", {
+              detail: {
+                title: `FlowState Session Complete! You completed ${sessionMins} minutes!`,
+                type: "pomodoro",
+              },
+            })
+          );
+        }
+
+        const fireNotification = () => {
+          if (
+            typeof window !== "undefined" &&
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            try {
+              const notif = new Notification("FlowState Session Complete!", {
+                body: `You completed ${sessionMins} minutes!`,
+                icon: "/favicon.ico",
+                tag: "flowstate-session-complete",
+                requireInteraction: true,
+              });
+              notif.onclick = () => {
+                window.focus();
+                notif.close();
+                setCelebrationDuration(sessionMins);
+                setCelebrationEndTime(Date.now());
+                setShowCelebration(true);
+                localStorage.removeItem("pending_celebration");
+                localStorage.removeItem("pending_celebration_duration");
+                localStorage.removeItem(STORAGE_KEY_TIMER_END);
+              };
+            } catch (err) {
+              console.warn("Notification error:", err);
+            }
+          }
+          resolve();
+        };
+
+        if (
+          typeof window !== "undefined" &&
+          "Notification" in window &&
+          Notification.permission === "default"
+        ) {
+          Notification.requestPermission()
+            .then(() => {
+              fireNotification();
+            })
+            .catch(() => {
+              fireNotification();
+            });
+        } else {
+          fireNotification();
+        }
+      });
+
+      notificationPromiseRef.current = promise;
+      return promise;
+    },
+    [customFocusMins]
+  );
 
   // Load custom focus duration, allowed domains, blocked paths, and warning state on mount
   useEffect(() => {
@@ -636,7 +675,7 @@ export function PomodoroTimer({
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   }, []);
 
-  const handleTimerCompletion = useCallback((currentMode: TimerMode) => {
+  const handleTimerCompletion = useCallback(async (currentMode: TimerMode) => {
     if (isCompletingRef.current) return;
     isCompletingRef.current = true;
 
@@ -721,7 +760,8 @@ export function PomodoroTimer({
       const isUserAway = typeof document !== "undefined" && document.hidden;
 
       // Browser notification MUST fire at exactly 0:00 regardless of which tab is active
-      triggerCompletionNotification(currentMode);
+      // Ensure the new Notification is called strictly BEFORE setShowCelebration(true)
+      await triggerCompletionNotification(currentMode);
 
       setCelebrationDuration(sessionMins);
       setCelebrationStartTime(startTimeVal || null);
@@ -911,12 +951,23 @@ export function PomodoroTimer({
     }
   };
 
+  const handleTimerCompletionRef = useRef(handleTimerCompletion);
+  useEffect(() => {
+    handleTimerCompletionRef.current = handleTimerCompletion;
+  }, [handleTimerCompletion]);
+
+  const triggerCompletionNotificationRef = useRef(triggerCompletionNotification);
+  useEffect(() => {
+    triggerCompletionNotificationRef.current = triggerCompletionNotification;
+  }, [triggerCompletionNotification]);
+
   const scheduleExactCompletion = useCallback((targetEndTime: number, modeToSchedule: TimerMode) => {
     const now = Date.now();
     const exactMs = targetEndTime - now;
     if (exactMs <= 0) {
-      triggerCompletionNotification(modeToSchedule);
-      handleTimerCompletion(modeToSchedule);
+      triggerCompletionNotification(modeToSchedule).finally(() => {
+        handleTimerCompletion(modeToSchedule);
+      });
       return;
     }
 
@@ -928,14 +979,14 @@ export function PomodoroTimer({
     scheduledEndTimeRef.current = targetEndTime;
 
     // 1. Direct setTimeout for the exact remaining milliseconds to trigger the Web Notification immediately at 0:00
-    completionTimeoutRef.current = setTimeout(() => {
+    completionTimeoutRef.current = setTimeout(async () => {
       const savedRunning = typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
       const currentEnd =
         typeof window !== "undefined"
           ? localStorage.getItem(STORAGE_KEY_TIMER_END) || localStorage.getItem(STORAGE_KEY_TARGET_END_TIME)
           : null;
       if (savedRunning && currentEnd && Date.now() >= Number(currentEnd) - 500) {
-        triggerCompletionNotification(modeToSchedule);
+        await triggerCompletionNotification(modeToSchedule);
         handleTimerCompletion(modeToSchedule);
       }
     }, exactMs);
@@ -990,7 +1041,7 @@ export function PomodoroTimer({
         worker = new Worker(workerBlobUrl);
         workerRef.current = worker;
 
-        worker.onmessage = (e) => {
+        worker.onmessage = async (e) => {
           if (e.data && e.data.type === "timer_complete") {
             const savedRunning = typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY_RUNNING) === "true";
             const currentEnd =
@@ -1000,8 +1051,8 @@ export function PomodoroTimer({
                 : null;
             const savedMode = (typeof window !== "undefined" && (localStorage.getItem(STORAGE_KEY_MODE) as TimerMode)) || "focus";
             if (savedRunning && currentEnd && Date.now() >= Number(currentEnd) - 500) {
-              triggerCompletionNotification(savedMode);
-              handleTimerCompletion(savedMode);
+              await triggerCompletionNotificationRef.current(savedMode);
+              handleTimerCompletionRef.current(savedMode);
             }
           }
         };
@@ -1021,16 +1072,28 @@ export function PomodoroTimer({
     }
 
     return () => {
-      if (worker) {
-        worker.postMessage({ type: "stop" });
-        worker.terminate();
-        workerRef.current = null;
-      }
-      if (workerBlobUrl) {
-        URL.revokeObjectURL(workerBlobUrl);
+      const terminateWorker = () => {
+        if (worker) {
+          worker.postMessage({ type: "stop" });
+          worker.terminate();
+          if (workerRef.current === worker) {
+            workerRef.current = null;
+          }
+        }
+        if (workerBlobUrl) {
+          URL.revokeObjectURL(workerBlobUrl);
+        }
+      };
+
+      if (notificationPromiseRef.current) {
+        notificationPromiseRef.current.finally(() => {
+          terminateWorker();
+        });
+      } else {
+        terminateWorker();
       }
     };
-  }, [handleTimerCompletion, triggerCompletionNotification]);
+  }, []);
 
   // Pomodoro countdown timer tick interval
   useEffect(() => {
@@ -1085,8 +1148,9 @@ export function PomodoroTimer({
             clearTimeout(completionTimeoutRef.current);
             completionTimeoutRef.current = null;
           }
-          triggerCompletionNotification(savedMode);
-          handleTimerCompletion(savedMode);
+          triggerCompletionNotification(savedMode).finally(() => {
+            handleTimerCompletion(savedMode);
+          });
         } else {
           setTimeLeft(left);
           setTimerActive(true);
@@ -1133,8 +1197,9 @@ export function PomodoroTimer({
       // If user is away (or returning) and timer has reached endTime:
       // Immediately trigger browser notification!
       if (isRunning && endTime && Date.now() >= endTime) {
-        triggerCompletionNotification(savedMode);
-        handleTimerCompletion(savedMode);
+        triggerCompletionNotification(savedMode).finally(() => {
+          handleTimerCompletion(savedMode);
+        });
       }
 
       // If tab has become visible and celebration is pending, open celebration modal
@@ -1309,6 +1374,7 @@ export function PomodoroTimer({
       localStorage.removeItem(STORAGE_KEY_REMAINING);
 
       hasNotifiedCompletionRef.current = false;
+      notificationPromiseRef.current = null;
       requestNotificationPermission();
 
       scheduleExactCompletion(targetEndTime, currentMode);
@@ -1385,6 +1451,7 @@ export function PomodoroTimer({
       localStorage.removeItem(STORAGE_KEY_REMAINING);
 
       hasNotifiedCompletionRef.current = false;
+      notificationPromiseRef.current = null;
       requestNotificationPermission();
 
       scheduleExactCompletion(targetEndTime, currentMode);
