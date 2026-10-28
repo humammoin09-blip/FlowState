@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="fs-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+  </defs>
+  <!-- Outer gradient container (emerald-500 to indigo-600) -->
+  <rect x="0" y="0" width="32" height="32" rx="7.5" ry="7.5" fill="url(#fs-gradient)" />
+  <!-- Inner dark slate-950 background -->
+  <rect x="2" y="2" width="28" height="28" rx="6" ry="6" fill="#020617" />
+  <!-- Centered FlowState Zap icon with emerald-400 fill and stroke -->
+  <g transform="translate(16, 16) scale(0.76) translate(-11.5, -12)">
+    <path
+      d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"
+      fill="#34d399"
+      fill-opacity="0.25"
+      stroke="#34d399"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </g>
+</svg>
