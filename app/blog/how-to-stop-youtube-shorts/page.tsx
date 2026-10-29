@@ -334,7 +334,7 @@ export default function YouTubeShortsGuidePage() {
                   className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 transition-colors shadow-lg shadow-emerald-500/20"
                 >
                   <Zap className="w-4 h-4 fill-slate-950" />
-                  <span>Try FlowState Free</span>
+                  <span>Try FlowState</span>
                 </Link>
 
                 <Link

@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Copy, Check, AlertTriangle, Puzzle } from "lucide-react";
+import { X, ExternalLink, Puzzle, Info } from "lucide-react";
 
-export const CRX_DOWNLOAD_URL =
-  "https://github.com/humammoin09-blip/Momentum-AI/releases/latest/download/extension.crx";
+export const CHROME_STORE_URL =
+  "https://chromewebstore.google.com/detail/flowstate-blocker/pfogmdmeecmebledgboclipombjdneip";
+
+export const CRX_DOWNLOAD_URL = CHROME_STORE_URL;
 
 interface InstallGuideModalProps {
   isOpen: boolean;
@@ -13,8 +15,6 @@ interface InstallGuideModalProps {
 }
 
 export function InstallGuideModal({ isOpen, onClose }: InstallGuideModalProps) {
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
-
   // Close on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -29,14 +29,6 @@ export function InstallGuideModal({ isOpen, onClose }: InstallGuideModalProps) {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isOpen, onClose]);
-
-  const copyToClipboard = (text: string) => {
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(text);
-      setCopiedUrl(text);
-      setTimeout(() => setCopiedUrl(null), 2000);
-    }
-  };
 
   return (
     <AnimatePresence>
@@ -59,7 +51,7 @@ export function InstallGuideModal({ isOpen, onClose }: InstallGuideModalProps) {
             exit={{ opacity: 0, scale: 0.94, y: 12 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-xl rounded-3xl bg-slate-900/95 border border-white/10 p-6 sm:p-7 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8),0_0_25px_rgba(16,185,129,0.08)] backdrop-blur-2xl text-slate-100 z-10 overflow-hidden"
+            className="relative w-full max-w-md rounded-3xl bg-slate-900/95 border border-white/10 p-6 sm:p-7 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8),0_0_25px_rgba(16,185,129,0.08)] backdrop-blur-2xl text-slate-100 z-10 overflow-hidden"
           >
             {/* Close Button inside motion.div so it fades out and scales down together with the modal */}
             <button
@@ -89,133 +81,30 @@ export function InstallGuideModal({ isOpen, onClose }: InstallGuideModalProps) {
                   Install for Chrome or Brave
                 </h2>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Follow these simple steps to install the FlowState Blocker extension
+                  Get the official FlowState Blocker extension
                 </p>
               </div>
             </div>
 
-            {/* Steps Container */}
-            <div className="space-y-4 mb-5">
-              {/* Step 1 */}
-              <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-950/60 border border-white/5">
-                <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold shrink-0 mt-0.5">
-                  1
-                </div>
-                <div className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                  Click the button below to download the extension file (<code className="px-1.5 py-0.5 rounded-md bg-emerald-950/60 text-emerald-300 font-mono text-xs border border-emerald-500/30">extension.crx</code>).
-                </div>
-              </div>
-
-              {/* Step 2 */}
-              <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-950/60 border border-white/5">
-                <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold shrink-0 mt-0.5">
-                  2
-                </div>
-                <div className="text-xs sm:text-sm text-slate-300 leading-relaxed flex-1">
-                  <div>Open your browser&apos;s extension page:</div>
-                  <div className="mt-2.5 space-y-2">
-                    {/* Chrome */}
-                    <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-900/80 border border-white/5">
-                      <span className="text-xs text-slate-400">
-                        <strong className="text-slate-200">For Chrome:</strong> Type <code className="text-emerald-400 font-mono px-1">chrome://extensions</code> in the URL bar.
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard("chrome://extensions")}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition shrink-0"
-                        title="Copy URL"
-                      >
-                        {copiedUrl === "chrome://extensions" ? (
-                          <>
-                            <Check className="w-3 h-3 text-emerald-400" />
-                            <span className="text-emerald-400">Copied</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3 h-3" />
-                            <span>Copy</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Brave */}
-                    <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-900/80 border border-white/5">
-                      <span className="text-xs text-slate-400">
-                        <strong className="text-slate-200">For Brave:</strong> Type <code className="text-emerald-400 font-mono px-1">brave://extensions</code> in the URL bar.
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard("brave://extensions")}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition shrink-0"
-                        title="Copy URL"
-                      >
-                        {copiedUrl === "brave://extensions" ? (
-                          <>
-                            <Check className="w-3 h-3 text-emerald-400" />
-                            <span className="text-emerald-400">Copied</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3 h-3" />
-                            <span>Copy</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Step 3 */}
-              <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-950/60 border border-white/5">
-                <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold shrink-0 mt-0.5">
-                  3
-                </div>
-                <div className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                  Turn ON <strong className="text-slate-100">&apos;Developer mode&apos;</strong> (toggle located in the top right corner).
-                </div>
-              </div>
-
-              {/* Step 4 */}
-              <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-950/60 border border-white/5">
-                <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold shrink-0 mt-0.5">
-                  4
-                </div>
-                <div className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                  Drag and drop the downloaded <code className="px-1.5 py-0.5 rounded-md bg-emerald-950/60 text-emerald-300 font-mono text-xs border border-emerald-500/30">extension.crx</code> file directly onto the page.
-                </div>
-              </div>
-
-              {/* Step 5 */}
-              <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-950/60 border border-white/5">
-                <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold shrink-0 mt-0.5">
-                  5
-                </div>
-                <div className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                  Click <strong className="text-slate-100">&apos;Add extension&apos;</strong> when prompted.
-                </div>
-              </div>
-            </div>
-
-            {/* High-Visibility Browser Parity Warning Note */}
-            <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs sm:text-sm leading-relaxed mb-4 shadow-[0_0_15px_rgba(245,158,11,0.08)]">
-              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-              <div>
-                <strong className="font-semibold text-amber-300">Important:</strong> You must use the FlowState web app in the same browser where you install this extension for the blocker to work.
-              </div>
-            </div>
-
-            {/* Prominent Action Button: Download .crx File */}
-            <div className="pt-1">
+            {/* Action Button: Add to Chrome */}
+            <div className="mb-4">
               <a
-                href={CRX_DOWNLOAD_URL}
+                href={CHROME_STORE_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all duration-200 shadow-[0_0_20px_rgba(16,185,129,0.35)] hover:shadow-[0_0_30px_rgba(16,185,129,0.55)] hover:scale-[1.01] active:scale-[0.99]"
+                className="w-full inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all duration-200 shadow-[0_0_20px_rgba(16,185,129,0.35)] hover:shadow-[0_0_30px_rgba(16,185,129,0.55)] hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
               >
-                <span>📥 Download .crx File</span>
+                <span>Add to Chrome</span>
+                <ExternalLink className="w-4 h-4 ml-0.5" />
               </a>
+            </div>
+
+            {/* Brave Note */}
+            <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-950/60 border border-white/5 text-xs text-slate-300 leading-relaxed">
+              <Info className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <p>
+                For Brave users, you can install it directly from the Chrome Web Store.
+              </p>
             </div>
           </motion.div>
         </div>
