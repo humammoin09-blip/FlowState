@@ -19,6 +19,7 @@ import {
   Quote,
 } from "lucide-react";
 import Footer from "@/components/Footer";
+import RelatedArticles from "@/components/RelatedArticles";
 
 export const metadata: Metadata = {
   title: "How to Stop YouTube Shorts While Studying (7 Practical Tips)",
@@ -347,6 +348,9 @@ export default function YouTubeShortsGuidePage() {
               </div>
             </div>
           </section>
+
+          {/* Related Articles Component */}
+          <RelatedArticles currentHref="/blog/how-to-stop-youtube-shorts" />
         </article>
       </main>
 

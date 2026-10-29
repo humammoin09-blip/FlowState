@@ -18,6 +18,7 @@ import {
   Scale,
 } from "lucide-react";
 import Footer from "@/components/Footer";
+import RelatedArticles from "@/components/RelatedArticles";
 
 export const metadata: Metadata = {
   title: "FlowState vs Pomofocus: Which is the Best Free Pomodoro Timer?",
@@ -366,6 +367,9 @@ export default function FlowStateVsPomofocusPage() {
               </div>
             </div>
           </section>
+
+          {/* Related Articles Component */}
+          <RelatedArticles currentHref="/vs/pomofocus" />
         </article>
       </main>
 

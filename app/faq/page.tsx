@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import Footer from "@/components/Footer";
 import FAQAccordion from "./FAQAccordion";
+import RelatedArticles from "@/components/RelatedArticles";
 
 export const metadata: Metadata = {
   title: "Frequently Asked Questions — FlowState",
@@ -177,6 +178,9 @@ export default function FAQPage() {
               </div>
             </div>
           </section>
+
+          {/* Related Articles Component */}
+          <RelatedArticles currentHref="/faq" />
         </div>
       </main>
 

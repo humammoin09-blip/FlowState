@@ -17,6 +17,7 @@ import {
   Scale,
 } from "lucide-react";
 import Footer from "@/components/Footer";
+import RelatedArticles from "@/components/RelatedArticles";
 
 export const metadata: Metadata = {
   title: "FlowState vs Forest: Which Focus App is Better in 2026?",
@@ -358,6 +359,9 @@ export default function FlowStateVsForestPage() {
               </div>
             </div>
           </section>
+
+          {/* Related Articles Component */}
+          <RelatedArticles currentHref="/vs/forest" />
         </article>
       </main>
 
