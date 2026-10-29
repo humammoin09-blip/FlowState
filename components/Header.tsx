@@ -64,13 +64,9 @@ export function Header({
     clearAllNotifications,
   } = useNotifications();
 
-  // Close dropdown on click outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
       }
     }
@@ -83,7 +79,6 @@ export function Header({
     };
   }, [showNotifications]);
 
-  // Toggle dropdown and mark all notifications as read when opening
   const toggleNotifications = () => {
     const nextState = !showNotifications;
     setShowNotifications(nextState);
@@ -92,7 +87,6 @@ export function Header({
     }
   };
 
-  // Update header greeting and date
   useEffect(() => {
     setIsMounted(true);
     const updateTime = () => {
@@ -115,12 +109,10 @@ export function Header({
     return () => clearInterval(interval);
   }, []);
 
-  // Dynamic XP & Level calculation
   const currentXP = calculateUserXP(focusHours, completedTasksCount);
   const currentLevel = calculateUserLevel(currentXP);
   const isGuestOrNew = userName === "Guest User" || userName === "New User";
 
-  // Get user initials for avatar fallback
   const initials = isGuestOrNew
     ? "GU"
     : userName
@@ -131,259 +123,229 @@ export function Header({
         .slice(0, 2);
 
   return (
-    <header className="sticky top-0 z-40 w-full px-3 sm:px-6 py-3 sm:py-4 bg-slate-950/80 backdrop-blur-xl border-b border-white/10 flex items-center justify-between gap-3">
-      {/* Left: Mobile Hamburger Toggle + Greeting Banner & Live Status */}
-      <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-        <button
-          type="button"
-          onClick={onToggleMobileMenu}
-          aria-label="Open Navigation Menu"
-          className="md:hidden p-2 -ml-1 text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors flex-shrink-0 cursor-pointer"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
-
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <h1 className="text-base sm:text-xl md:text-2xl font-extrabold tracking-tight text-white flex items-center gap-1.5 sm:gap-2 truncate" suppressHydrationWarning>
-              <span className="truncate" suppressHydrationWarning>{greeting}, {userName.split(" ")[0]}</span>
-              <span className="inline-block animate-bounce text-amber-400 flex-shrink-0">
-                ⚡
-              </span>
-            </h1>
-          </div>
-          <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5 flex items-center gap-1.5 sm:gap-2 truncate" suppressHydrationWarning>
-            <span suppressHydrationWarning>{isMounted ? currentDateStr : ""}</span>
-            {isMounted && currentDateStr ? (
-              <span className="w-1 h-1 rounded-full bg-slate-600 flex-shrink-0" />
-            ) : null}
-            <span className="text-emerald-400 font-medium truncate">
-              Optimal Focus Window
-            </span>
-          </p>
-        </div>
-
-        {/* Live Focus Status Indicator Pill */}
-        <div className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 text-xs font-semibold shadow-[0_0_15px_rgba(16,185,129,0.2)]">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400"></span>
-          </span>
-          <span>
-            {timerActive
-              ? `Deep Focus Active (${timerTime})`
-              : "Flow State Ready"}
-          </span>
-        </div>
-      </div>
-
-      {/* Right: Search, Notifications, User Avatar Badge */}
-      <div className="flex items-center gap-3 ml-auto">
-        {/* Search Bar / Cmd+K trigger */}
-        <div className="relative hidden md:flex items-center">
-          <Search className="absolute left-3 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search tasks, sessions, commands..."
-            className="w-64 pl-9 pr-12 py-1.5 text-xs rounded-xl bg-slate-900/60 border border-white/10 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all"
-          />
-          <kbd className="absolute right-2.5 px-1.5 py-0.5 text-[10px] font-mono text-slate-400 bg-slate-800 border border-white/10 rounded">
-            ⌘K
-          </kbd>
-        </div>
-
-        {/* Welcome Guide / Onboarding Trigger */}
-        <button
-          onClick={() => {
-            if (typeof window !== "undefined") {
-              window.dispatchEvent(new CustomEvent("flowstate_open_welcome_modal"));
-            }
-          }}
-          className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-slate-900/80 border border-white/10 text-slate-300 hover:text-white hover:border-emerald-500/40 hover:text-emerald-400 transition-all cursor-pointer flex-shrink-0"
-          aria-label="Welcome Guide"
-          title="Open Welcome Guide"
-        >
-          <HelpCircle className="w-4 h-4" />
-        </button>
-
-        {/* Notification Bell Dropdown */}
-        <div ref={dropdownRef} className="relative flex-shrink-0">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 px-3 py-3 backdrop-blur-xl sm:px-6">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <button
             type="button"
-            onClick={toggleNotifications}
-            className="relative flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-xl bg-slate-900/80 border border-white/10 text-slate-300 hover:text-white hover:border-white/20 transition-colors cursor-pointer"
-            aria-label="Notifications"
-            aria-expanded={showNotifications}
+            onClick={onToggleMobileMenu}
+            aria-label="Open Navigation Menu"
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 text-slate-300 transition hover:border-slate-700 hover:text-white md:hidden"
           >
-            <Bell className="w-4 h-4 pointer-events-none" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-[10px] font-bold text-slate-950 flex items-center justify-center border-2 border-slate-950 shadow-[0_0_10px_rgba(16,185,129,0.5)] pointer-events-none leading-none">
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </span>
-            )}
+            <Menu className="h-4 w-4" />
           </button>
 
-          <AnimatePresence>
-            {showNotifications && (
-              <motion.div
-                initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                transition={{ duration: 0.15, ease: "easeOut" }}
-                className="absolute right-0 top-full mt-2 w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] rounded-2xl bg-slate-900/95 backdrop-blur-2xl border border-white/15 shadow-2xl p-4 z-50 space-y-3"
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1
+                className="truncate text-base font-semibold tracking-tight text-slate-50 sm:text-xl"
+                suppressHydrationWarning
               >
-                <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-white uppercase tracking-wider">
-                      Notifications
-                    </span>
-                    {unreadCount > 0 ? (
-                      <span className="text-[10px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                        {unreadCount} New
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-medium text-slate-400 bg-white/5 px-2 py-0.5 rounded-full">
-                        All Caught Up
-                      </span>
-                    )}
-                  </div>
-                  {notifications.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={markAllAsRead}
-                        className="text-[10px] text-slate-400 hover:text-emerald-400 transition-colors flex items-center gap-0.5 cursor-pointer"
-                        title="Mark all as read"
-                      >
-                        <Check className="w-3 h-3" />
-                        <span>Read</span>
-                      </button>
-                      <span className="text-slate-600">•</span>
-                      <button
-                        type="button"
-                        onClick={clearAllNotifications}
-                        className="text-[10px] text-slate-400 hover:text-rose-400 transition-colors flex items-center gap-0.5 cursor-pointer"
-                        title="Clear all"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                        <span>Clear</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-2 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
-                  {notifications.length === 0 ? (
-                    <div className="py-8 text-center text-xs text-slate-400">
-                      No notifications yet
-                    </div>
-                  ) : (
-                    notifications.map((n, idx) => (
-                      <div
-                        key={n.id || `notif-${idx}`}
-                        onClick={() => {
-                          if (!n.read) {
-                            markAsRead(n.id);
-                          }
-                          if (String(n.title).toLowerCase().includes("welcome to flowstate")) {
-                            if (typeof window !== "undefined") {
-                              window.dispatchEvent(new CustomEvent("flowstate_open_welcome_modal"));
-                            }
-                            setShowNotifications(false);
-                          }
-                        }}
-                        className={`flex items-start gap-2.5 p-2.5 rounded-xl transition-all text-left cursor-pointer ${
-                          n.read
-                            ? "bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 opacity-80"
-                            : "bg-emerald-500/[0.08] hover:bg-emerald-500/[0.12] border border-emerald-500/25"
-                        }`}
-                      >
-                        <div
-                          className={`p-1.5 rounded-lg border mt-0.5 flex-shrink-0 ${
-                            n.type === "pomodoro"
-                              ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
-                              : n.type === "task"
-                              ? "bg-cyan-500/10 border-cyan-500/20 text-cyan-400"
-                              : n.type === "streak"
-                              ? "bg-orange-500/10 border-orange-500/20 text-orange-400"
-                              : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                          }`}
-                        >
-                          {n.type === "pomodoro" ? (
-                            <Clock className="w-3.5 h-3.5" />
-                          ) : n.type === "task" ? (
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                          ) : n.type === "streak" ? (
-                            <Flame className="w-3.5 h-3.5" />
-                          ) : (
-                            <Zap className="w-3.5 h-3.5" />
-                          )}
-                        </div>
-                        <div className="flex-1 overflow-hidden min-w-0">
-                          <p
-                            className={`text-xs leading-snug break-words ${
-                              n.read
-                                ? "font-normal text-slate-300"
-                                : "font-semibold text-white"
-                            }`}
-                          >
-                            {n.title}
-                          </p>
-                          <p className="text-[10px] text-slate-400 mt-1">
-                            {n.time}
-                          </p>
-                        </div>
-                        {!n.read && (
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 mt-1.5 flex-shrink-0 shadow-[0_0_6px_#10b981]" />
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* User Profile Avatar Badge - Clickable to open ProfileModal */}
-        <div
-          onClick={onOpenProfile}
-          className="flex items-center gap-2.5 pl-2 border-l border-white/10 cursor-pointer group flex-shrink-0"
-          title="Click to edit profile"
-        >
-          <div className="relative transition-transform group-hover:scale-105">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-400 via-indigo-500 to-purple-500 p-[1.5px] shadow-[0_0_12px_rgba(16,185,129,0.3)]">
-              <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center text-xs font-bold text-white overflow-hidden">
-                {userAvatar &&
-                (userAvatar.startsWith("data:image/") ||
-                  userAvatar.startsWith("http")) ? (
-                  <img
-                    src={userAvatar}
-                    alt={userName}
-                    className="w-full h-full object-cover"
-                  />
-                ) : userAvatar ? (
-                  <span className="text-base">{userAvatar}</span>
-                ) : isGuestOrNew ? (
-                  <User className="w-4 h-4 text-slate-300" />
-                ) : (
-                  initials
-                )}
-              </div>
+                {greeting}, {userName.split(" ")[0]}
+              </h1>
+              <span className="inline-flex h-2.5 w-2.5 flex-shrink-0 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.9)]" />
             </div>
-            <span className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-950 border border-white/20 text-[8px] font-bold text-amber-400">
-              {currentLevel}
-            </span>
+            <p
+              className="mt-1 flex items-center gap-2 truncate text-[10px] font-medium text-slate-400 sm:text-xs"
+              suppressHydrationWarning
+            >
+              <span>{isMounted ? currentDateStr : ""}</span>
+              {isMounted && currentDateStr ? <span className="h-1 w-1 rounded-full bg-slate-600" /> : null}
+              <span className="text-emerald-400">Optimal Focus Window</span>
+            </p>
           </div>
 
-          <div className="hidden sm:flex flex-col">
-            <span className="text-xs font-bold text-slate-100 flex items-center gap-1">
-              {userName}
-              {!isGuestOrNew && <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />}
+          <div className="hidden items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-medium text-emerald-300 lg:flex">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/80" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
             </span>
-            <span className="text-[10px] text-slate-400 font-mono">
-              {userTitle} • {currentXP.toLocaleString()} XP
-            </span>
+            {timerActive ? `Deep focus ${timerTime}` : "Flow state ready"}
+          </div>
+        </div>
+
+        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <div className="relative hidden items-center lg:flex">
+            <Search className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search tasks, sessions, commands..."
+              className="w-64 rounded-xl border border-slate-800 bg-slate-900/80 py-2 pl-9 pr-11 text-xs text-slate-200 placeholder:text-slate-500 focus:border-emerald-500/40 focus:outline-none"
+            />
+            <kbd className="absolute right-2.5 rounded-md border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
+              ⌘K
+            </kbd>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(new CustomEvent("flowstate_open_welcome_modal"));
+              }
+            }}
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 text-slate-300 transition hover:border-slate-700 hover:text-white"
+            aria-label="Welcome Guide"
+            title="Open Welcome Guide"
+          >
+            <HelpCircle className="h-4 w-4" />
+          </button>
+
+          <div ref={dropdownRef} className="relative flex-shrink-0">
+            <button
+              type="button"
+              onClick={toggleNotifications}
+              aria-label="Notifications"
+              aria-expanded={showNotifications}
+              className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 text-slate-300 transition hover:border-slate-700 hover:text-white"
+            >
+              <Bell className="h-4 w-4" />
+              {unreadCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border border-slate-950 bg-emerald-400 px-1 text-[9px] font-bold text-slate-950">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </button>
+
+            <AnimatePresence>
+              {showNotifications && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                  transition={{ duration: 0.16, ease: "easeOut" }}
+                  className="absolute right-0 top-full z-50 mt-2 w-[min(22rem,calc(100vw-1.5rem))] rounded-2xl border border-slate-800 bg-slate-950/95 p-4 shadow-2xl"
+                >
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-300">
+                        Notifications
+                      </span>
+                      {unreadCount > 0 ? (
+                        <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                          {unreadCount} New
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-400">
+                          All caught up
+                        </span>
+                      )}
+                    </div>
+                    {notifications.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={markAllAsRead}
+                          className="inline-flex items-center gap-1 text-[10px] text-slate-400 transition hover:text-emerald-400"
+                        >
+                          <Check className="h-3 w-3" />
+                          Read
+                        </button>
+                        <span className="text-slate-700">•</span>
+                        <button
+                          type="button"
+                          onClick={clearAllNotifications}
+                          className="inline-flex items-center gap-1 text-[10px] text-slate-400 transition hover:text-rose-400"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          Clear
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
+                    {notifications.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-slate-400">No notifications yet</div>
+                    ) : (
+                      notifications.map((n, idx) => (
+                        <div
+                          key={n.id || `notif-${idx}`}
+                          onClick={() => {
+                            if (!n.read) markAsRead(n.id);
+                            if (String(n.title).toLowerCase().includes("welcome to flowstate")) {
+                              if (typeof window !== "undefined") {
+                                window.dispatchEvent(new CustomEvent("flowstate_open_welcome_modal"));
+                              }
+                              setShowNotifications(false);
+                            }
+                          }}
+                          className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-2.5 text-left transition ${
+                            n.read
+                              ? "border-slate-800 bg-slate-900/60 opacity-80 hover:bg-slate-900"
+                              : "border-emerald-500/20 bg-emerald-500/10 hover:bg-emerald-500/15"
+                          }`}
+                        >
+                          <div
+                            className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border ${
+                              n.type === "pomodoro"
+                                ? "border-amber-500/20 bg-amber-500/10 text-amber-400"
+                                : n.type === "task"
+                                  ? "border-cyan-500/20 bg-cyan-500/10 text-cyan-400"
+                                  : n.type === "streak"
+                                    ? "border-orange-500/20 bg-orange-500/10 text-orange-400"
+                                    : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                            }`}
+                          >
+                            {n.type === "pomodoro" ? (
+                              <Clock className="h-3.5 w-3.5" />
+                            ) : n.type === "task" ? (
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                            ) : n.type === "streak" ? (
+                              <Flame className="h-3.5 w-3.5" />
+                            ) : (
+                              <Zap className="h-3.5 w-3.5" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className={`break-words text-xs leading-snug ${n.read ? "text-slate-300" : "font-semibold text-white"}`}>
+                              {n.title}
+                            </p>
+                            <p className="mt-1 text-[10px] text-slate-400">{n.time}</p>
+                          </div>
+                          {!n.read && <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.9)]" />}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div
+            onClick={onOpenProfile}
+            className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-900/80 px-2 py-1.5 transition hover:border-slate-700"
+            title="Click to edit profile"
+          >
+            <div className="relative">
+              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-gradient-to-br from-emerald-400 via-cyan-500 to-indigo-500 p-[1px]">
+                <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[10px] bg-slate-950 text-xs font-semibold text-slate-100">
+                  {userAvatar && (userAvatar.startsWith("data:image/") || userAvatar.startsWith("http")) ? (
+                    <img src={userAvatar} alt={userName} className="h-full w-full object-cover" />
+                  ) : userAvatar ? (
+                    <span className="text-sm">{userAvatar}</span>
+                  ) : isGuestOrNew ? (
+                    <User className="h-4 w-4 text-slate-300" />
+                  ) : (
+                    initials
+                  )}
+                </div>
+              </div>
+              <span className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-slate-950 bg-amber-400 text-[8px] font-bold text-slate-950">
+                {currentLevel}
+              </span>
+            </div>
+
+            <div className="hidden sm:flex sm:flex-col">
+              <span className="flex items-center gap-1 text-xs font-semibold text-slate-100">
+                {userName}
+                {!isGuestOrNew && <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />}
+              </span>
+              <span className="text-[10px] text-slate-400">
+                {userTitle} • {currentXP.toLocaleString()} XP
+              </span>
+            </div>
           </div>
         </div>
       </div>
