@@ -28,9 +28,16 @@ export function Footer({ className = "" }: FooterProps) {
 
         {/* Legal & Help Links */}
         <nav
-          aria-label="Legal links"
+          aria-label="Footer navigation links"
           className="flex flex-wrap items-center justify-center gap-4 text-xs font-medium text-slate-400"
         >
+          <Link
+            href="/blog/how-to-stop-youtube-shorts"
+            className="hover:text-emerald-400 text-slate-400 transition-colors"
+          >
+            Blog
+          </Link>
+          <span className="text-slate-700">•</span>
           <Link
             href="/privacy"
             className="hover:text-emerald-400 text-slate-400 transition-colors"
