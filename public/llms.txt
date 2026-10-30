@@ -1,0 +1,11 @@
+# FlowState
+> A system-driven deep work dashboard that combines an AI coach with a hard website blocker to cure procrastination.
+
+## Features
+- Daily Focus Blueprint
+- AI Discipline Coach
+- Browser Extension that blocks distracting sites (YouTube Shorts, Instagram Reels, Reddit).
+
+## Links
+- Homepage: https://flowstate-deepwork.vercel.app/
+- Comparisons: https://flowstate-deepwork.vercel.app/vs/cold-turkey

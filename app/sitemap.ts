@@ -1,9 +1,10 @@
 import type { MetadataRoute } from "next";
+import { COMPETITOR_SLUGS } from "@/lib/competitors";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://flowstate-deepwork.vercel.app";
 
-  return [
+  const staticRoutes: MetadataRoute.Sitemap = [
     {
       url: baseUrl,
       lastModified: new Date(),
@@ -35,24 +36,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.9,
     },
     {
-      url: `${baseUrl}/vs/forest`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-    {
-      url: `${baseUrl}/vs/pomofocus`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-    {
-      url: `${baseUrl}/vs/cold-turkey`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-    {
       url: `${baseUrl}/faq`,
       lastModified: new Date(),
       changeFrequency: "weekly",
@@ -71,4 +54,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.5,
     },
   ];
+
+  const competitorRoutes: MetadataRoute.Sitemap = COMPETITOR_SLUGS.map((slug) => ({
+    url: `${baseUrl}/vs/${slug}`,
+    lastModified: new Date(),
+    changeFrequency: "weekly",
+    priority: 0.9,
+  }));
+
+  return [...staticRoutes, ...competitorRoutes];
 }

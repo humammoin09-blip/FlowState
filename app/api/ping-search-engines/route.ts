@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { INDEXNOW_KEY, SITE_HOST, SITE_URL } from "@/lib/indexnow";
+import { COMPETITOR_SLUGS } from "@/lib/competitors";
 
 const DEFAULT_URLS = [
   `${SITE_URL}/`,
@@ -7,9 +8,7 @@ const DEFAULT_URLS = [
   `${SITE_URL}/blog/how-to-stay-disciplined`,
   `${SITE_URL}/blog/how-to-stop-instagram-reels`,
   `${SITE_URL}/blog/how-to-stop-youtube-shorts`,
-  `${SITE_URL}/vs/cold-turkey`,
-  `${SITE_URL}/vs/forest`,
-  `${SITE_URL}/vs/pomofocus`,
+  ...COMPETITOR_SLUGS.map((slug) => `${SITE_URL}/vs/${slug}`),
   `${SITE_URL}/faq`,
 ];
 
