@@ -12,6 +12,13 @@ export interface RelatedArticle {
 
 export const ALL_RELATED_ARTICLES: RelatedArticle[] = [
   {
+    href: "/blog/how-to-stay-disciplined",
+    title: "How to Stay Disciplined (When Motivation Dies)",
+    description: "Learn how to build unbreakable discipline using environment design, friction, and accountability.",
+    badge: "Discipline Guide",
+    icon: "guide",
+  },
+  {
     href: "/blog/cold-turkey-alternative",
     title: "The Best Cold Turkey Alternative for Students",
     description: "Why flexible allowlists and AI coaching beat brutal lockouts for modern students.",

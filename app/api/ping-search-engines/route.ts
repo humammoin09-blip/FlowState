@@ -4,6 +4,7 @@ import { INDEXNOW_KEY, SITE_HOST, SITE_URL } from "@/lib/indexnow";
 const DEFAULT_URLS = [
   `${SITE_URL}/`,
   `${SITE_URL}/blog/cold-turkey-alternative`,
+  `${SITE_URL}/blog/how-to-stay-disciplined`,
   `${SITE_URL}/blog/how-to-stop-instagram-reels`,
   `${SITE_URL}/blog/how-to-stop-youtube-shorts`,
   `${SITE_URL}/vs/cold-turkey`,
