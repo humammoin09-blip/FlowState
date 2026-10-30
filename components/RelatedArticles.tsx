@@ -12,11 +12,32 @@ export interface RelatedArticle {
 
 export const ALL_RELATED_ARTICLES: RelatedArticle[] = [
   {
+    href: "/blog/cold-turkey-alternative",
+    title: "The Best Cold Turkey Alternative for Students",
+    description: "Why flexible allowlists and AI coaching beat brutal lockouts for modern students.",
+    badge: "Blocker Guide",
+    icon: "blocker",
+  },
+  {
+    href: "/blog/how-to-stop-instagram-reels",
+    title: "How to Stop Instagram Reels While Studying",
+    description: "5 practical ways to block Reels feeds while keeping essential study messaging active.",
+    badge: "Study Guide",
+    icon: "guide",
+  },
+  {
     href: "/blog/how-to-stop-youtube-shorts",
     title: "How to Stop YouTube Shorts While Studying",
     description: "7 practical ways to eliminate short-form video temptation and reclaim study focus.",
     badge: "Study Guide",
     icon: "guide",
+  },
+  {
+    href: "/vs/cold-turkey",
+    title: "FlowState vs Cold Turkey",
+    description: "Rigid blanket blocking vs modern context-aware path blocking and AI coaching.",
+    badge: "Blocker Comparison",
+    icon: "blocker",
   },
   {
     href: "/vs/forest",
@@ -31,13 +52,6 @@ export const ALL_RELATED_ARTICLES: RelatedArticle[] = [
     description: "Why a built-in website blocker beats a standard countdown clock for deep work.",
     badge: "App Comparison",
     icon: "timer",
-  },
-  {
-    href: "/vs/cold-turkey",
-    title: "FlowState vs Cold Turkey",
-    description: "Rigid blanket blocking vs modern context-aware path blocking and AI coaching.",
-    badge: "Blocker Comparison",
-    icon: "blocker",
   },
   {
     href: "/faq",
