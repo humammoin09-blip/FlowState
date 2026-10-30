@@ -59,7 +59,6 @@ export default function TaskList(props?: TaskListProps) {
     return running && mode === "focus" && isFocusActive;
   }, [props?.isFocusActive]);
 
-  // Reactively track focus running state from props, localStorage, and cross-tab storage events
   useEffect(() => {
     const syncFocusState = () => {
       setIsFocusRunning(checkFocusRunning());
@@ -77,7 +76,6 @@ export default function TaskList(props?: TaskListProps) {
     };
   }, [checkFocusRunning]);
 
-  // Web Worker & Timeout refs for cross-tab background MIT notifications
   const workerRef = React.useRef<Worker | null>(null);
   const timeoutsRef = React.useRef<Map<string, NodeJS.Timeout>>(new Map());
   const scheduledTasksRef = React.useRef<Map<string, number>>(new Map());
@@ -137,9 +135,7 @@ export default function TaskList(props?: TaskListProps) {
     scheduledTasksRef.current.clear();
     if (workerRef.current) {
       try {
-        workerRef.current.postMessage({
-          type: "STOP_ALL",
-        });
+        workerRef.current.postMessage({ type: "STOP_ALL" });
       } catch {
         // ignore
       }
@@ -147,12 +143,7 @@ export default function TaskList(props?: TaskListProps) {
   }, []);
 
   const handleThresholdTrigger = useCallback(
-    (
-      taskId: string,
-      taskTitle: string,
-      threshold: "2min" | "1min" | "0min",
-      endTime: number
-    ) => {
+    (taskId: string, taskTitle: string, threshold: "2min" | "1min" | "0min", endTime: number) => {
       const dedupKey = `${taskId}_${threshold}_${endTime}`;
       const storageKey = `flowstate_mit_notified_${dedupKey}`;
 
@@ -176,12 +167,7 @@ export default function TaskList(props?: TaskListProps) {
         message = `Task '${taskTitle}' has reached 0:00!`;
       }
 
-      // 1. Browser OS Web Notification
-      if (
-        typeof window !== "undefined" &&
-        "Notification" in window &&
-        Notification.permission === "granted"
-      ) {
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
         try {
           new Notification("FlowState MIT Alert ⚡", {
             body: message,
@@ -192,17 +178,13 @@ export default function TaskList(props?: TaskListProps) {
         }
       }
 
-      // 2. In-App Toast
       if (typeof window !== "undefined") {
         const isVisible = typeof document !== "undefined" && document.visibilityState === "visible";
 
         if (threshold === "0min") {
           window.dispatchEvent(
             new CustomEvent("flowstate_new_notification", {
-              detail: {
-                title: message,
-                type: "task",
-              },
+              detail: { title: message, type: "task" },
             })
           );
           if (isVisible) {
@@ -212,10 +194,7 @@ export default function TaskList(props?: TaskListProps) {
         } else if (isVisible) {
           window.dispatchEvent(
             new CustomEvent("flowstate_new_notification", {
-              detail: {
-                title: message,
-                type: "task",
-              },
+              detail: { title: message, type: "task" },
             })
           );
           toastedEventsRef.current.add(dedupKey);
@@ -244,7 +223,6 @@ export default function TaskList(props?: TaskListProps) {
 
       clearTaskTimeouts(taskId);
 
-      // Pre-mark past thresholds so they don't fire retroactively
       if (delay2m <= 0) {
         toastedEventsRef.current.add(`${taskId}_2min_${endTime}`);
         localStorage.setItem(`flowstate_mit_toasted_${taskId}_2min_${endTime}`, "true");
@@ -254,7 +232,6 @@ export default function TaskList(props?: TaskListProps) {
         localStorage.setItem(`flowstate_mit_toasted_${taskId}_1min_${endTime}`, "true");
       }
 
-      // 1. Strict foreground setTimeout
       if (delay2m > 0) {
         const t2m = setTimeout(() => {
           handleThresholdTrigger(taskId, taskTitle, "2min", endTime);
@@ -276,7 +253,6 @@ export default function TaskList(props?: TaskListProps) {
         timeoutsRef.current.set(`${taskId}_0min`, t0m);
       }
 
-      // 2. Background Web Worker (unthrottled background execution)
       if (workerRef.current) {
         try {
           workerRef.current.postMessage({
@@ -300,7 +276,6 @@ export default function TaskList(props?: TaskListProps) {
     [clearTaskTimeouts, handleThresholdTrigger, requestNotificationPermission]
   );
 
-  // Dedicated Web Worker lifecycle to prevent background tab timer throttling
   useEffect(() => {
     let worker: Worker | null = null;
     let workerBlobUrl: string | null = null;
@@ -317,40 +292,19 @@ export default function TaskList(props?: TaskListProps) {
               var t = activeTasks[i];
               if (!t || !t.endTime) continue;
 
-              // Check 2 minutes remaining (endTime - 120000)
               if (t.has2m && !t.notified2m && now >= t.endTime - 120000 && now < t.endTime) {
                 t.notified2m = true;
-                self.postMessage({
-                  type: 'TASK_ALERT',
-                  taskId: t.id,
-                  taskTitle: t.title,
-                  threshold: '2min',
-                  endTime: t.endTime
-                });
+                self.postMessage({ type: 'TASK_ALERT', taskId: t.id, taskTitle: t.title, threshold: '2min', endTime: t.endTime });
               }
 
-              // Check 1 minute remaining (endTime - 60000)
               if (t.has1m && !t.notified1m && now >= t.endTime - 60000 && now < t.endTime) {
                 t.notified1m = true;
-                self.postMessage({
-                  type: 'TASK_ALERT',
-                  taskId: t.id,
-                  taskTitle: t.title,
-                  threshold: '1min',
-                  endTime: t.endTime
-                });
+                self.postMessage({ type: 'TASK_ALERT', taskId: t.id, taskTitle: t.title, threshold: '1min', endTime: t.endTime });
               }
 
-              // Check 0 minutes remaining (at or past endTime)
               if (!t.notified0m && now >= t.endTime) {
                 t.notified0m = true;
-                self.postMessage({
-                  type: 'TASK_ALERT',
-                  taskId: t.id,
-                  taskTitle: t.title,
-                  threshold: '0min',
-                  endTime: t.endTime
-                });
+                self.postMessage({ type: 'TASK_ALERT', taskId: t.id, taskTitle: t.title, threshold: '0min', endTime: t.endTime });
               }
             }
           }
@@ -438,18 +392,12 @@ export default function TaskList(props?: TaskListProps) {
 
       if (currentTime <= 0) {
         const key0m = `${task.id}_0min_${endTime}`;
-        if (
-          !toastedEventsRef.current.has(key0m) &&
-          localStorage.getItem(`flowstate_mit_toasted_${key0m}`) !== "true"
-        ) {
+        if (!toastedEventsRef.current.has(key0m) && localStorage.getItem(`flowstate_mit_toasted_${key0m}`) !== "true") {
           toastedEventsRef.current.add(key0m);
           localStorage.setItem(`flowstate_mit_toasted_${key0m}`, "true");
           window.dispatchEvent(
             new CustomEvent("flowstate_new_notification", {
-              detail: {
-                title: `Task '${task.title}' has reached 0:00!`,
-                type: "task",
-              },
+              detail: { title: `Task '${task.title}' has reached 0:00!`, type: "task" },
             })
           );
         }
@@ -457,36 +405,24 @@ export default function TaskList(props?: TaskListProps) {
         toastedEventsRef.current.add(`${task.id}_2min_${endTime}`);
       } else if (currentTime <= 60) {
         const key1m = `${task.id}_1min_${endTime}`;
-        if (
-          !toastedEventsRef.current.has(key1m) &&
-          localStorage.getItem(`flowstate_mit_toasted_${key1m}`) !== "true"
-        ) {
+        if (!toastedEventsRef.current.has(key1m) && localStorage.getItem(`flowstate_mit_toasted_${key1m}`) !== "true") {
           toastedEventsRef.current.add(key1m);
           localStorage.setItem(`flowstate_mit_toasted_${key1m}`, "true");
           window.dispatchEvent(
             new CustomEvent("flowstate_new_notification", {
-              detail: {
-                title: `Task '${task.title}' is ending soon! Only 1 minute left.`,
-                type: "task",
-              },
+              detail: { title: `Task '${task.title}' is ending soon! Only 1 minute left.`, type: "task" },
             })
           );
         }
         toastedEventsRef.current.add(`${task.id}_2min_${endTime}`);
       } else if (currentTime <= 120) {
         const key2m = `${task.id}_2min_${endTime}`;
-        if (
-          !toastedEventsRef.current.has(key2m) &&
-          localStorage.getItem(`flowstate_mit_toasted_${key2m}`) !== "true"
-        ) {
+        if (!toastedEventsRef.current.has(key2m) && localStorage.getItem(`flowstate_mit_toasted_${key2m}`) !== "true") {
           toastedEventsRef.current.add(key2m);
           localStorage.setItem(`flowstate_mit_toasted_${key2m}`, "true");
           window.dispatchEvent(
             new CustomEvent("flowstate_new_notification", {
-              detail: {
-                title: `Task '${task.title}' is ending soon! Only 2 minutes left.`,
-                type: "task",
-              },
+              detail: { title: `Task '${task.title}' is ending soon! Only 2 minutes left.`, type: "task" },
             })
           );
         }
@@ -503,10 +439,7 @@ export default function TaskList(props?: TaskListProps) {
 
       if (error) {
         if (error.code === "PGRST204" || error.message?.includes("remaining_seconds")) {
-          await supabase
-            .from("tasks")
-            .update({ completed: true })
-            .eq("id", taskId);
+          await supabase.from("tasks").update({ completed: true }).eq("id", taskId);
         } else {
           console.warn("Supabase completion sync warning:", error);
         }
@@ -526,14 +459,10 @@ export default function TaskList(props?: TaskListProps) {
           ? localStorage.getItem("flowstate_active_user_id") || "guest_default"
           : "guest_default");
 
-      const { data, error } = await supabase
-        .from("tasks")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const { data, error } = await supabase.from("tasks").select("*").order("created_at", { ascending: false });
 
       if (error) throw error;
       if (data) {
-        // Filter strictly to current user's tasks
         const userTasks = filterTasksByUserId(data, activeUid);
         if (typeof window !== "undefined") {
           localStorage.setItem(`flowstate_cached_tasks_${activeUid}`, JSON.stringify(userTasks));
@@ -542,21 +471,11 @@ export default function TaskList(props?: TaskListProps) {
 
         const formattedTasks: Task[] = userTasks.map((t) => {
           const isCompletedSaved =
-            typeof window !== "undefined" &&
-            localStorage.getItem(`task_completed_${t.id}`) === "true";
-          const savedTime =
-            typeof window !== "undefined"
-              ? localStorage.getItem(`task_timer_${t.id}`)
-              : null;
-          const savedEndTime =
-            typeof window !== "undefined"
-              ? localStorage.getItem(`task_timer_end_${t.id}`)
-              : null;
+            typeof window !== "undefined" && localStorage.getItem(`task_completed_${t.id}`) === "true";
+          const savedTime = typeof window !== "undefined" ? localStorage.getItem(`task_timer_${t.id}`) : null;
+          const savedEndTime = typeof window !== "undefined" ? localStorage.getItem(`task_timer_end_${t.id}`) : null;
           const isTaskCompleted = Boolean(
-            t.completed ||
-              t.remaining_seconds === 0 ||
-              isCompletedSaved ||
-              savedTime === "0"
+            t.completed || t.remaining_seconds === 0 || isCompletedSaved || savedTime === "0"
           );
 
           if (isTaskCompleted) {
@@ -626,13 +545,7 @@ export default function TaskList(props?: TaskListProps) {
               const savedEndTime = localStorage.getItem(`task_timer_end_${t.id}`);
               const rawDuration = decodeTaskDuration(t.duration);
               if (t.completed || t.remaining_seconds === 0 || isCompletedSaved || savedTime === "0") {
-                return {
-                  ...t,
-                  duration: rawDuration,
-                  completed: true,
-                  remainingSeconds: 0,
-                  remaining_seconds: 0,
-                };
+                return { ...t, duration: rawDuration, completed: true, remainingSeconds: 0, remaining_seconds: 0 };
               }
               const defaultMins = parseInt(rawDuration || "5", 10) || 5;
               let rem: number;
@@ -672,13 +585,9 @@ export default function TaskList(props?: TaskListProps) {
 
     const channel = supabase
       .channel("tasks_realtime_changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tasks" },
-        () => {
-          fetchTasks();
-        }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, () => {
+        fetchTasks();
+      })
       .subscribe();
 
     return () => {
@@ -686,7 +595,6 @@ export default function TaskList(props?: TaskListProps) {
     };
   }, [fetchTasks]);
 
-  // Timestamp-based countdown timer - persists across tabs and calculates exact elapsed time
   useEffect(() => {
     const tick = () => {
       const focusRunning = checkFocusRunning();
@@ -694,7 +602,6 @@ export default function TaskList(props?: TaskListProps) {
 
       if (!focusRunning) {
         cancelAllTaskTimeouts();
-        // When focus is paused or stopped: save remaining time and clear task_timer_end_
         setTasks((prevTasks) => {
           let hasChanges = false;
           const nextTasks = prevTasks.map((task) => {
@@ -723,23 +630,16 @@ export default function TaskList(props?: TaskListProps) {
 
       setTasks((prevTasks) => {
         const nextTasks = prevTasks.map((task) => {
-          // Skip already completed or 0-remaining tasks
           if (task.completed || task.remainingSeconds === 0) return task;
 
           const isCompletedSaved =
-            typeof window !== "undefined" &&
-            localStorage.getItem(`task_completed_${task.id}`) === "true";
+            typeof window !== "undefined" && localStorage.getItem(`task_completed_${task.id}`) === "true";
           if (isCompletedSaved) {
             if (typeof window !== "undefined") {
               localStorage.setItem(`task_timer_${task.id}`, "0");
               localStorage.removeItem(`task_timer_end_${task.id}`);
             }
-            return {
-              ...task,
-              completed: true,
-              remainingSeconds: 0,
-              remaining_seconds: 0,
-            };
+            return { ...task, completed: true, remainingSeconds: 0, remaining_seconds: 0 };
           }
 
           let endTime: number;
@@ -748,7 +648,6 @@ export default function TaskList(props?: TaskListProps) {
           if (savedEnd) {
             endTime = Number(savedEnd);
           } else {
-            // Task starting: save endTime = Date.now() + (durationInSeconds * 1000)
             const savedTime = typeof window !== "undefined" ? localStorage.getItem(`task_timer_${task.id}`) : null;
             const defaultMins = parseInt(task.duration || "5", 10) || 5;
             let durationInSeconds: number;
@@ -770,10 +669,8 @@ export default function TaskList(props?: TaskListProps) {
             }
           }
 
-          // Trigger Notifications on Task Start / Ensure background timeouts are scheduled
           scheduleTaskNotifications(task.id, task.title, endTime);
 
-          // Calculate remaining time using Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
           const currentTime = Math.max(0, Math.ceil((endTime - now) / 1000));
 
           if (typeof window !== "undefined") {
@@ -788,15 +685,9 @@ export default function TaskList(props?: TaskListProps) {
             }
 
             justCompletedTaskIds.push(task.id);
-
             handleThresholdTrigger(task.id, task.title, "0min", endTime);
 
-            return {
-              ...task,
-              completed: true,
-              remainingSeconds: 0,
-              remaining_seconds: 0,
-            };
+            return { ...task, completed: true, remainingSeconds: 0, remaining_seconds: 0 };
           }
 
           return { ...task, remainingSeconds: currentTime };
@@ -876,34 +767,13 @@ export default function TaskList(props?: TaskListProps) {
 
     try {
       let data, error;
-      const insertAttempt = await supabase
-        .from("tasks")
-        .insert([
-          {
-            title: newTaskTitle,
-            priority: newTaskPriority,
-            completed: false,
-            duration: encodedDuration,
-            remaining_seconds: initialSeconds,
-          },
-        ])
-        .select();
+      const insertAttempt = await supabase.from("tasks").insert([{ title: newTaskTitle, priority: newTaskPriority, completed: false, duration: encodedDuration, remaining_seconds: initialSeconds }]).select();
 
       data = insertAttempt.data;
       error = insertAttempt.error;
 
       if (error && (error.code === "PGRST204" || error.message?.includes("remaining_seconds"))) {
-        const retry = await supabase
-          .from("tasks")
-          .insert([
-            {
-              title: newTaskTitle,
-              priority: newTaskPriority,
-              completed: false,
-              duration: encodedDuration,
-            },
-          ])
-          .select();
+        const retry = await supabase.from("tasks").insert([{ title: newTaskTitle, priority: newTaskPriority, completed: false, duration: encodedDuration }]).select();
         data = retry.data;
         error = retry.error;
       }
@@ -998,12 +868,7 @@ export default function TaskList(props?: TaskListProps) {
 
     const updated = tasks.map((t) =>
       t.id === id
-        ? {
-            ...t,
-            completed: nextStatus,
-            remainingSeconds: nextStatus ? 0 : defaultSecs,
-            remaining_seconds: nextStatus ? 0 : defaultSecs,
-          }
+        ? { ...t, completed: nextStatus, remainingSeconds: nextStatus ? 0 : defaultSecs, remaining_seconds: nextStatus ? 0 : defaultSecs }
         : t
     );
     setTasks(updated);
@@ -1014,21 +879,13 @@ export default function TaskList(props?: TaskListProps) {
     }
 
     try {
-      const updatePayload = nextStatus
-        ? { completed: true, remaining_seconds: 0 }
-        : { completed: false, remaining_seconds: defaultSecs };
+      const updatePayload = nextStatus ? { completed: true, remaining_seconds: 0 } : { completed: false, remaining_seconds: defaultSecs };
 
-      const { error } = await supabase
-        .from("tasks")
-        .update(updatePayload)
-        .eq("id", id);
+      const { error } = await supabase.from("tasks").update(updatePayload).eq("id", id);
 
       if (error) {
         if (error.code === "PGRST204" || error.message?.includes("remaining_seconds")) {
-          await supabase
-            .from("tasks")
-            .update({ completed: nextStatus })
-            .eq("id", id);
+          await supabase.from("tasks").update({ completed: nextStatus }).eq("id", id);
         } else {
           throw error;
         }
@@ -1084,10 +941,7 @@ export default function TaskList(props?: TaskListProps) {
     }
 
     try {
-      const { error } = await supabase
-        .from("tasks")
-        .delete()
-        .in("id", completedIds);
+      const { error } = await supabase.from("tasks").delete().in("id", completedIds);
       if (error) throw error;
     } catch (error) {
       console.warn("Supabase clear completed sync warning:", error);
@@ -1102,19 +956,23 @@ export default function TaskList(props?: TaskListProps) {
   };
 
   return (
-    <div className="space-y-6 text-white">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <Sparkles className="text-cyan-400 w-5 h-5" /> Most Important Tasks (MITs)
-        </h2>
+    <div className="space-y-4 rounded-[28px] border border-slate-800 bg-slate-950/70 p-3 shadow-[0_18px_40px_rgba(2,6,23,0.35)] sm:p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-500/20 bg-cyan-500/10 text-cyan-300">
+            <Sparkles className="h-4 w-4" />
+          </span>
+          <h2 className="text-lg font-semibold tracking-tight text-slate-50 sm:text-xl">Most Important Tasks</h2>
+        </div>
+
         {tasks.some((t) => t.completed || t.remainingSeconds === 0) && (
           <button
             onClick={clearCompletedTasks}
-            className="text-xs text-slate-400 hover:text-slate-200 bg-neutral-800/60 hover:bg-neutral-800 px-3 py-1.5 rounded-lg border border-neutral-700/50 transition flex items-center gap-1.5"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900/80 px-2.5 py-1.5 text-[10px] font-medium text-slate-300 transition hover:border-slate-600 hover:text-white"
             title="Clean up completed tasks without restarting them"
           >
-            <Trash2 className="w-3.5 h-3.5 text-slate-400" />
-            Clear Completed
+            <Trash2 className="h-3.5 w-3.5" />
+            Clear completed
           </button>
         )}
       </div>
@@ -1122,45 +980,45 @@ export default function TaskList(props?: TaskListProps) {
       <AnimatePresence>
         {showAlert && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between gap-3 shadow-lg"
+            exit={{ opacity: 0, y: -8 }}
+            className="flex items-center justify-between gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200"
           >
             <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 animate-bounce" />
+              <AlertCircle className="h-4 w-4 text-amber-300" />
               <span>
-                <strong>Attention Required:</strong> You have high-priority MIT tasks pending focus attention!
+                <strong className="font-semibold text-amber-100">Attention required:</strong> You have high-priority MIT tasks pending focus attention.
               </span>
             </div>
-            <span className="text-[10px] bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/40 font-mono">
-              OS Alerts Active
+            <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-amber-300">
+              Alerts active
             </span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <form onSubmit={addTask} className="flex flex-col sm:flex-row gap-3">
+      <form onSubmit={addTask} className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_110px_130px_auto]">
         <input
           type="text"
           value={newTaskTitle}
           onChange={(e) => setNewTaskTitle(e.target.value)}
           placeholder="Add a new task..."
-          className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-cyan-500 placeholder:text-neutral-500"
+          className="h-11 rounded-xl border border-slate-800 bg-slate-900/80 px-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/40 focus:outline-none"
         />
-        
+
         <input
           type="number"
           value={newTaskDuration}
           onChange={(e) => setNewTaskDuration(e.target.value)}
-          placeholder="Mins (e.g. 5)"
-          className="w-full sm:w-28 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-cyan-500 text-neutral-300 font-mono"
+          placeholder="Minutes"
+          className="h-11 rounded-xl border border-slate-800 bg-slate-900/80 px-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/40 focus:outline-none"
         />
 
         <select
           value={newTaskPriority}
           onChange={(e) => setNewTaskPriority(e.target.value)}
-          className="bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-cyan-500 text-neutral-400"
+          className="h-11 rounded-xl border border-slate-800 bg-slate-900/80 px-3 text-sm text-slate-200 focus:border-cyan-500/40 focus:outline-none"
         >
           <option value="High">High</option>
           <option value="Medium">Medium</option>
@@ -1169,80 +1027,76 @@ export default function TaskList(props?: TaskListProps) {
 
         <button
           type="submit"
-          className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-semibold px-5 py-3 rounded-xl transition flex items-center justify-center gap-2 active:scale-95 shadow-md"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
         >
-          <Plus className="w-4 h-4" /> Add
+          <Plus className="h-4 w-4" />
+          Add
         </button>
       </form>
 
       <div className="space-y-3">
         {loading ? (
-          /* Glowing shimmer loading skeleton */
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-slate-900/60 backdrop-blur-xl animate-pulse"
-              >
+              <div key={i} className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900/60 p-3 animate-pulse">
                 <div className="flex items-center gap-3">
-                  <div className="w-5 h-5 rounded-md bg-white/10" />
-                  <div className="h-4 w-40 bg-white/10 rounded-lg" />
+                  <div className="h-5 w-5 rounded-md bg-slate-800" />
+                  <div className="h-4 w-32 rounded-full bg-slate-800" />
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="h-6 w-16 rounded-full bg-white/10" />
-                  <div className="h-6 w-14 rounded-full bg-white/10" />
-                  <div className="w-4 h-4 rounded bg-white/10" />
+                <div className="flex items-center gap-2">
+                  <div className="h-7 w-16 rounded-full bg-slate-800" />
+                  <div className="h-7 w-16 rounded-full bg-slate-800" />
+                  <div className="h-4 w-4 rounded bg-slate-800" />
                 </div>
               </div>
             ))}
           </div>
         ) : tasks.length === 0 ? (
-          /* Polished empty state with helpful micro-copy */
-          <div className="p-8 rounded-2xl border border-dashed border-white/10 bg-slate-900/30 text-center flex flex-col items-center justify-center space-y-3">
-            <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
-              <ClipboardList className="w-6 h-6" />
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 px-4 py-10 text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-500/20 bg-cyan-500/10 text-cyan-300">
+              <ClipboardList className="h-6 w-6" />
             </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-200">No active MIT tasks yet</p>
-              <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                Add your Most Important Tasks (MITs) above to prioritize your high-impact work and trigger countdown alerts.
-              </p>
-            </div>
+            <p className="text-sm font-semibold text-slate-100">No active MIT tasks yet</p>
+            <p className="mt-1 max-w-sm text-xs text-slate-400">
+              Add your Most Important Tasks above to prioritize high-impact work and keep focus running smoothly.
+            </p>
           </div>
         ) : (
           tasks.map((task) => (
             <div
               key={task.id}
-              className={`flex items-center justify-between p-4 rounded-xl border transition ${
+              className={`flex flex-col gap-3 rounded-2xl border p-3 transition sm:flex-row sm:items-center sm:justify-between ${
                 task.completed
-                  ? "bg-neutral-900/40 border-neutral-900 text-neutral-500 line-through"
-                  : "bg-neutral-900 border-neutral-800 text-white hover:border-white/20"
+                  ? "border-slate-800 bg-slate-900/50 text-slate-500 line-through"
+                  : "border-slate-800 bg-slate-900/70 text-slate-100 hover:border-slate-700"
               }`}
             >
-              <div className="flex items-center gap-3">
-                <button onClick={() => toggleTask(task.id, task.completed)}>
+              <div className="flex min-w-0 items-center gap-3">
+                <button type="button" onClick={() => toggleTask(task.id, task.completed)} className="flex-shrink-0">
                   {task.completed ? (
-                    <CheckSquare className="w-5 h-5 text-cyan-400" />
+                    <CheckSquare className="h-5 w-5 text-emerald-400" />
                   ) : (
-                    <Square className="w-5 h-5 text-neutral-500 hover:text-white transition-colors" />
+                    <Square className="h-5 w-5 text-slate-500 transition hover:text-slate-200" />
                   )}
                 </button>
-                <span>{task.title}</span>
+                <span className="min-w-0 truncate text-sm font-medium">{task.title}</span>
               </div>
 
-              <div className="flex items-center gap-3">
-                <span className="text-xs px-2.5 py-1 rounded-full bg-neutral-800/80 text-cyan-300 flex items-center gap-1 border border-cyan-500/20 font-mono">
-                  <Clock className="w-3 h-3" /> {formatTime(task.remainingSeconds)}
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span className="inline-flex items-center gap-1 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-medium text-cyan-300">
+                  <Clock className="h-3 w-3" />
+                  {formatTime(task.remainingSeconds)}
                 </span>
-                <span className="text-xs px-2.5 py-1 rounded-full bg-neutral-800 text-neutral-400">
+                <span className="rounded-full border border-slate-700 bg-slate-800 px-2.5 py-1 text-[10px] font-medium text-slate-300">
                   {task.priority}
                 </span>
                 <button
+                  type="button"
                   onClick={() => deleteTask(task.id)}
-                  className="text-neutral-500 hover:text-red-400 transition"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-rose-300"
                   title="Delete task"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             </div>
