@@ -40,6 +40,20 @@ export const ALL_RELATED_ARTICLES: RelatedArticle[] = [
     icon: "guide",
   },
   {
+    href: "/blog/best-website-blocker-for-students",
+    title: "Best Website Blocker for Students",
+    description: "Compare Cold Turkey, Forest, and FlowState allowlists and AI coaching for students.",
+    badge: "Blocker Guide",
+    icon: "blocker",
+  },
+  {
+    href: "/blog/how-to-focus-on-studies",
+    title: "How to Focus on Studies (When Motivation Dies)",
+    description: "Master the 3-step framework: environment, friction, and accountability.",
+    badge: "Discipline Guide",
+    icon: "guide",
+  },
+  {
     href: "/vs/cold-turkey",
     title: "FlowState vs Cold Turkey",
     description: "Rigid blanket blocking vs modern context-aware path blocking and AI coaching.",

@@ -31,9 +31,11 @@ interface PageProps {
 }
 
 export async function generateStaticParams() {
-  return COMPETITOR_SLUGS.map((competitor) => ({
-    competitor,
-  }));
+  return COMPETITOR_SLUGS.filter((slug) => slug !== "cold-turkey").map(
+    (competitor) => ({
+      competitor,
+    })
+  );
 }
 
 export async function generateMetadata({
