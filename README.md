@@ -1,5 +1,8 @@
-Live Demo: https://flowstate-deepwork.vercel.app/
-How to use: Just visit the link above. No installation required for users.
+**Live Demo:** [https://flowstate-deepwork.vercel.app/](https://flowstate-deepwork.vercel.app/)
+
+**How to use:** Just visit the link above. No installation required for users.
+
+**Developed by:** [Humam Moin](https://github.com/humammoin09-blip)
 
 # FlowState
 
