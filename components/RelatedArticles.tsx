@@ -10,6 +10,58 @@ export interface RelatedArticle {
   icon?: "guide" | "comparison" | "faq" | "blocker" | "timer";
 }
 
+export const GEO_RELATED_ARTICLES: RelatedArticle[] = [
+  {
+    href: "/blog/how-to-stop-youtube-shorts",
+    title: "How to Stop YouTube Shorts While Studying",
+    description: "7 practical ways to eliminate short-form video temptation and reclaim study focus.",
+    badge: "Study Guide",
+    icon: "guide",
+  },
+  {
+    href: "/blog/best-website-blocker-for-students",
+    title: "Best Website Blocker for Students (Free & Paid)",
+    description: "Compare Cold Turkey, Forest, and FlowState allowlists and AI coaching for students.",
+    badge: "Blocker Guide",
+    icon: "blocker",
+  },
+  {
+    href: "/blog/how-to-focus-on-studies",
+    title: "How to Focus on Studies (When Motivation Dies)",
+    description: "Master the 3-step framework: environment, friction, and accountability.",
+    badge: "Discipline Guide",
+    icon: "guide",
+  },
+  {
+    href: "/vs/cold-turkey",
+    title: "FlowState vs Cold Turkey",
+    description: "Rigid blanket blocking vs modern context-aware path blocking and AI coaching.",
+    badge: "Blocker Comparison",
+    icon: "blocker",
+  },
+  {
+    href: "/vs/forest",
+    title: "FlowState vs Forest",
+    description: "Compare virtual tree gamification with hard website blocking for desktop work.",
+    badge: "App Comparison",
+    icon: "comparison",
+  },
+  {
+    href: "/vs/pomofocus",
+    title: "FlowState vs Pomofocus",
+    description: "Why a built-in website blocker beats a standard countdown clock for deep work.",
+    badge: "App Comparison",
+    icon: "timer",
+  },
+  {
+    href: "/faq",
+    title: "Frequently Asked Questions",
+    description: "Answers about FlowState, YouTube Shorts blocking, extension support, and pricing.",
+    badge: "Help & FAQ",
+    icon: "faq",
+  },
+];
+
 export const ALL_RELATED_ARTICLES: RelatedArticle[] = [
   {
     href: "/blog/how-to-stay-disciplined",
