@@ -29,6 +29,10 @@ export const metadata: Metadata = {
     "how to stop youtube shorts",
     "youtube shorts blocker",
     "block shorts while studying",
+    "leechblock alternative",
+    "unhook alternative",
+    "flowstate vs leechblock",
+    "flowstate vs unhook",
   ],
   openGraph: {
     title: "How to Stop YouTube Shorts While Studying (7 Practical Tips)",
@@ -61,7 +65,7 @@ export default function YouTubeShortsGuidePage() {
       },
     },
     datePublished: "2026-10-29T10:00:00Z",
-    dateModified: "2026-10-29T10:00:00Z",
+    dateModified: "2026-11-02T10:00:00Z",
     mainEntityOfPage: {
       "@type": "WebPage",
       "@id": "https://flowstate-deepwork.vercel.app/blog/how-to-stop-youtube-shorts",
@@ -378,6 +382,89 @@ export default function YouTubeShortsGuidePage() {
                 <Zap className="w-3.5 h-3.5 fill-slate-950" />
                 <span>Get FlowState Blocker Free</span>
               </Link>
+            </div>
+          </section>
+
+          {/* Section: Why Use FlowState Instead of LeechBlock and Unhook? */}
+          <section className="bg-gradient-to-br from-slate-900/90 via-slate-900/60 to-indigo-950/30 border border-indigo-500/20 rounded-2xl p-6 sm:p-8 backdrop-blur-sm space-y-6">
+            <div className="flex items-center gap-2.5 text-xs font-semibold text-indigo-400">
+              <Sparkles className="w-4 h-4" />
+              <span>Free Distraction Blocker Comparison</span>
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              Why Use FlowState Instead of LeechBlock and Unhook?
+            </h2>
+
+            {/* 50-word bold summary */}
+            <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-4 text-emerald-100 text-sm leading-relaxed">
+              <p>
+                <strong>While LeechBlock and Unhook are great for hiding YouTube Shorts, they require manual setup and don&apos;t block other sites. FlowState combines a Pomodoro timer, an AI coach, and a hard site blocker that automatically blocks Shorts and distracting sites in one click.</strong>
+              </p>
+            </div>
+
+            <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
+              When searching for free tools to stop YouTube Shorts, browser extensions like <strong>Unhook</strong> (Remove YouTube Recommended Videos) and <strong>LeechBlock NG</strong> are popular open-source choices. However, there is a fundamental difference in architecture: Unhook and LeechBlock are single-purpose utilities requiring tedious manual configuration, whereas FlowState is an automated focus system designed specifically for deep study sessions.
+            </p>
+
+            {/* Comparison Table: FlowState vs LeechBlock + Unhook (Focus: Automation vs Manual Setup) */}
+            <div className="overflow-x-auto rounded-xl border border-white/10 bg-slate-950/60">
+              <table className="w-full text-left text-xs sm:text-sm text-slate-300">
+                <thead className="bg-slate-900/80 text-[11px] uppercase tracking-wider text-slate-400 border-b border-white/10">
+                  <tr>
+                    <th scope="col" className="px-4 py-3 font-semibold text-white">Focus Dimension</th>
+                    <th scope="col" className="px-4 py-3 font-semibold text-slate-300">LeechBlock + Unhook</th>
+                    <th scope="col" className="px-4 py-3 font-bold text-emerald-400 bg-emerald-500/10 border-l border-emerald-500/20">FlowState</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  <tr>
+                    <td className="px-4 py-3 font-medium text-white">Setup &amp; Automation</td>
+                    <td className="px-4 py-3 text-amber-400">Manual Setup (Type regex rules, configure blocksets, toggle multiple CSS checkboxes)</td>
+                    <td className="px-4 py-3 font-semibold text-emerald-300 bg-emerald-500/5 border-l border-emerald-500/20">100% Automated (Blocks Shorts, Reels &amp; doomscrolling in 1 click)</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 font-medium text-white">Blocking Scope</td>
+                    <td className="px-4 py-3 text-slate-400">Fragmented (Unhook only affects YouTube; LeechBlock requires manual URL lists)</td>
+                    <td className="px-4 py-3 font-semibold text-emerald-300 bg-emerald-500/5 border-l border-emerald-500/20">Unified Cross-Site (Shorts, Reels, Reddit &amp; entertainment tabs)</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 font-medium text-white">Lecture Preservation</td>
+                    <td className="px-4 py-3 text-slate-300">Hides UI elements manually; prone to breaking with YouTube updates</td>
+                    <td className="px-4 py-3 font-semibold text-emerald-300 bg-emerald-500/5 border-l border-emerald-500/20">Surgical Path Blocking (Lectures work smoothly; Shorts routes closed)</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 font-medium text-white">AI Accountability Coach</td>
+                    <td className="px-4 py-3 text-rose-400">None (Pure static blocker with no cognitive support)</td>
+                    <td className="px-4 py-3 font-semibold text-emerald-300 bg-emerald-500/5 border-l border-emerald-500/20">Built-in AI Coach (Diagnoses procrastination and breaks down tough tasks)</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 font-medium text-white">Sprint Timer &amp; Blueprint</td>
+                    <td className="px-4 py-3 text-slate-400">None (Requires running external Pomodoro apps)</td>
+                    <td className="px-4 py-3 font-semibold text-emerald-300 bg-emerald-500/5 border-l border-emerald-500/20">Integrated Pomodoro timer &amp; daily study blueprint</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 font-medium text-white">Pricing</td>
+                    <td className="px-4 py-3 text-slate-300">Free open-source</td>
+                    <td className="px-4 py-3 font-bold text-emerald-400 bg-emerald-500/5 border-l border-emerald-500/20">100% Free Complete Operating System</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4 pt-2">
+              <div className="bg-slate-900/60 border border-white/10 rounded-xl p-4 space-y-2">
+                <h3 className="font-bold text-white text-sm">The Problem with Manual Setup (LeechBlock &amp; Unhook)</h3>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  LeechBlock requires you to manually maintain blocksets, write domain wildcards, and set time quotas. Unhook relies on hiding CSS selectors—meaning when YouTube modifies its code, recommendations often leak back through. Most critically, neither tool provides a timer or coaching when cognitive friction strikes.
+                </p>
+              </div>
+              <div className="bg-slate-900/60 border border-emerald-500/30 rounded-xl p-4 space-y-2">
+                <h3 className="font-bold text-emerald-400 text-sm">The FlowState Solution: Automated Deep Work</h3>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  FlowState automates the entire focus pipeline. With one click, your Pomodoro countdown begins, Shorts and distracting tabs are automatically blocked at the network route level, and your AI coach stands by to keep you accountable. No manual rule-building required.
+                </p>
+              </div>
             </div>
           </section>
 

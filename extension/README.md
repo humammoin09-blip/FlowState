@@ -1,3 +1,6 @@
+Live Demo: https://flowstate-deepwork.vercel.app/
+How to use: Just visit the link above. No installation required for users.
+
 # FlowState Blocker — Chrome Extension (Manifest V3)
 
 A Chrome extension companion for the FlowState web application. It enforces distraction-free lockdown during deep work sessions by dynamically blocking distracting websites and sub-paths (including YouTube Shorts) using Chrome's Declarative Net Request API.

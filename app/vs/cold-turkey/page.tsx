@@ -34,6 +34,9 @@ export const metadata: Metadata = {
     "cold turkey alternative",
     "best website blocker for studying",
     "allowlist website blocker",
+    "freedom alternative",
+    "flowstate vs freedom",
+    "best free alternative to freedom",
   ],
   alternates: {
     canonical: "https://flowstate-deepwork.vercel.app/vs/cold-turkey",
@@ -75,7 +78,7 @@ export default function FlowStateVsColdTurkeyPage() {
       },
     },
     datePublished: "2026-11-01T00:00:00Z",
-    dateModified: "2026-11-01T00:00:00Z",
+    dateModified: "2026-11-02T00:00:00Z",
     mainEntityOfPage: {
       "@type": "WebPage",
       "@id": "https://flowstate-deepwork.vercel.app/vs/cold-turkey",
@@ -299,13 +302,13 @@ export default function FlowStateVsColdTurkeyPage() {
 
                   <tr>
                     <td className="px-5 py-4 font-medium text-white">
-                      Pricing for Students
+                      Pricing
                     </td>
                     <td className="px-5 py-4 text-slate-300">
-                      Free (very limited) / $39 Pro
+                      Freedom: Paid Subscription (Cold Turkey: $39 Pro)
                     </td>
                     <td className="px-5 py-4 font-bold text-emerald-400 bg-emerald-500/5 border-l border-emerald-500/20">
-                      100% Free Core Web App &amp; Extension
+                      FlowState: 100% Free
                     </td>
                   </tr>
                 </tbody>
@@ -409,6 +412,64 @@ export default function FlowStateVsColdTurkeyPage() {
                   </p>
                 </div>
               </div>
+            </div>
+          </section>
+
+          {/* Section: FlowState vs Freedom (The Best Free Alternative) */}
+          <section className="bg-gradient-to-br from-slate-900/90 via-slate-900/60 to-emerald-950/30 border border-emerald-500/30 rounded-2xl p-6 sm:p-8 backdrop-blur-sm space-y-6">
+            <div className="flex items-center gap-2.5 text-xs font-semibold text-emerald-400">
+              <Scale className="w-4 h-4" />
+              <span>Freedom Alternative</span>
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              FlowState vs Freedom (The Best Free Alternative)
+            </h2>
+
+            {/* 50-word bold summary */}
+            <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-4 text-emerald-100 text-sm leading-relaxed">
+              <p>
+                <strong>Freedom is a powerful cross-device blocker, but it requires a paid subscription. FlowState offers a 100% free alternative with a built-in AI accountability coach and context-aware blocking (allowing YouTube lectures but blocking Shorts).</strong>
+              </p>
+            </div>
+
+            <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
+              While Freedom is a popular multi-device blocker, its reliance on a paid recurring subscription and blunt domain-level blocking creates high friction for students. FlowState eliminates the cost barrier completely while delivering surgical path blocking and psychological AI coaching.
+            </p>
+
+            {/* Comparison Table: FlowState vs Freedom */}
+            <div className="overflow-x-auto rounded-xl border border-white/10 bg-slate-950/60">
+              <table className="w-full text-left text-xs sm:text-sm text-slate-300">
+                <thead className="bg-slate-900/80 text-[11px] uppercase tracking-wider text-slate-400 border-b border-white/10">
+                  <tr>
+                    <th scope="col" className="px-4 py-3 font-semibold text-white">Capability</th>
+                    <th scope="col" className="px-4 py-3 font-semibold text-slate-300">Freedom Blocker</th>
+                    <th scope="col" className="px-4 py-3 font-bold text-emerald-400 bg-emerald-500/10 border-l border-emerald-500/20">FlowState</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  <tr>
+                    <td className="px-4 py-3 font-medium text-white">Pricing</td>
+                    <td className="px-4 py-3 text-rose-400">Freedom: Paid Subscription ($3.33–$8.99/month)</td>
+                    <td className="px-4 py-3 font-bold text-emerald-400 bg-emerald-500/5 border-l border-emerald-500/20">FlowState: 100% Free</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 font-medium text-white">Context-Aware Blocking</td>
+                    <td className="px-4 py-3 text-slate-400">Blunt Domain Level (Blocks all of YouTube or nothing)</td>
+                    <td className="px-4 py-3 font-semibold text-emerald-300 bg-emerald-500/5 border-l border-emerald-500/20">Surgical Path Blocking (Allows YouTube lectures, blocks Shorts)</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 font-medium text-white">AI Accountability Coach</td>
+                    <td className="px-4 py-3 text-rose-400">None (Passive block screen)</td>
+                    <td className="px-4 py-3 font-semibold text-emerald-300 bg-emerald-500/5 border-l border-emerald-500/20">Built-in Gemini AI Coach (Deconstructs difficult assignments)</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 font-medium text-white">Study Workspace &amp; Timer</td>
+                    <td className="px-4 py-3 text-slate-400">Blocker only (Requires 3rd-party Pomodoro timers)</td>
+                    <td className="px-4 py-3 font-semibold text-emerald-300 bg-emerald-500/5 border-l border-emerald-500/20">Complete Deep Work OS (Pomodoro timer, blueprints, streak saver)</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </section>
 
