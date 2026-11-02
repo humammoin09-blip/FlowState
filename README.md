@@ -1,3 +1,6 @@
+Live Demo: https://flowstate-deepwork.vercel.app/
+How to use: Just visit the link above. No installation required for users.
+
 # FlowState
 
 > **Deep Work & Productivity Dashboard**  
