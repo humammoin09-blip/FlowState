@@ -31,7 +31,6 @@ Most productivity applications rely on willpower. When motivation inevitably dip
 
 Paired with a Google Gemini-powered AI Discipline Coach that delivers unapologetic reality checks, an immutable consistency ledger, and ambient soundscapes, FlowState converts daily intention into uninterrupted execution.
 
-
 ---
 
 ## ✨ Features
