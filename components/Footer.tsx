@@ -72,6 +72,20 @@ export function Footer({ className = "" }: FooterProps) {
               height="54"
             />
           </a>
+          <a
+            href="https://megalaun.ch/"
+            target="_blank"
+            rel="noopener"
+            className="inline-block transition-opacity hover:opacity-80 mt-4 sm:mt-0"
+          >
+            <img
+              src="https://megalaun.ch/badges/featured/asset"
+              alt="Featured on MegaLaunch"
+              width="220"
+              height="64"
+              style={{ width: "auto", height: "50px" }}
+            />
+          </a>
         </div>
       </div>
     </footer>
