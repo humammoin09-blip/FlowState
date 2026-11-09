@@ -86,6 +86,23 @@ export function Footer({ className = "" }: FooterProps) {
               style={{ width: "auto", height: "50px" }}
             />
           </a>
+          <div className="flex flex-wrap items-center gap-3 max-w-full">
+            <a 
+              href="https://listmysaas.xyz" 
+              target="_blank" 
+              rel="noopener noreferrer"
+            >
+              <img 
+                src="https://listmysaas.xyz/listmysaasbadgenormal.svg" 
+                alt="Featured on ListMySaaS" 
+                width="125" 
+                height="44" 
+                loading="lazy" 
+                decoding="async" 
+                className="inline-block"
+              />
+            </a>
+          </div>
         </div>
       </div>
     </footer>
