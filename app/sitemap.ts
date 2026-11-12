@@ -48,6 +48,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.9,
     },
     {
+      url: `${baseUrl}/blog/best-focus-apps-for-students`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.9,
+    },
+    {
       url: `${baseUrl}/adhd-focus-timer`,
       lastModified: new Date(),
       changeFrequency: "weekly",
@@ -55,6 +61,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     {
       url: `${baseUrl}/study-timer`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.9,
+    },
+    {
+      url: `${baseUrl}/pomodoro-timer`,
       lastModified: new Date(),
       changeFrequency: "weekly",
       priority: 0.9,

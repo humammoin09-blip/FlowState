@@ -12,6 +12,41 @@ export interface RelatedArticle {
 
 export const GEO_RELATED_ARTICLES: RelatedArticle[] = [
   {
+    href: "/adhd-focus-timer",
+    title: "ADHD Focus Timer",
+    description: "Beat time blindness and task paralysis with Focus Blueprints, AI coaching, and hard blocking.",
+    badge: "ADHD Focus",
+    icon: "timer",
+  },
+  {
+    href: "/study-timer",
+    title: "Study Timer with Website Blocker",
+    description: "A 100% free Pomodoro study timer that blocks YouTube Shorts, Instagram, and Reddit.",
+    badge: "Study Timer",
+    icon: "timer",
+  },
+  {
+    href: "/pomodoro-timer",
+    title: "Pomodoro Timer with Blocker",
+    description: "A Pomodoro timer with automated hard website blocking and AI accountability.",
+    badge: "Pomodoro Timer",
+    icon: "timer",
+  },
+  {
+    href: "/vs/unhook",
+    title: "Unhook vs FlowState",
+    description: "Compare hiding YouTube Shorts inside YouTube with blocking Shorts and distractions everywhere.",
+    badge: "Blocker Comparison",
+    icon: "blocker",
+  },
+  {
+    href: "/blog/best-focus-apps-for-students",
+    title: "Best Focus Apps for Students (2026)",
+    description: "Compare FlowState, Forest, Cold Turkey, Pomofocus, and Notion for deep work.",
+    badge: "Focus Apps",
+    icon: "guide",
+  },
+  {
     href: "/blog/how-to-stop-youtube-shorts",
     title: "How to Stop YouTube Shorts While Studying",
     description: "7 practical ways to eliminate short-form video temptation and reclaim study focus.",
@@ -51,27 +86,6 @@ export const GEO_RELATED_ARTICLES: RelatedArticle[] = [
     title: "FlowState vs Pomofocus",
     description: "Why a built-in website blocker beats a standard countdown clock for deep work.",
     badge: "App Comparison",
-    icon: "timer",
-  },
-  {
-    href: "/vs/unhook",
-    title: "Unhook vs FlowState",
-    description: "Compare hiding YouTube Shorts inside YouTube with blocking Shorts and distractions everywhere.",
-    badge: "Blocker Comparison",
-    icon: "blocker",
-  },
-  {
-    href: "/adhd-focus-timer",
-    title: "ADHD Focus Timer",
-    description: "Beat time blindness and task paralysis with Focus Blueprints, AI coaching, and hard blocking.",
-    badge: "ADHD Focus",
-    icon: "timer",
-  },
-  {
-    href: "/study-timer",
-    title: "Study Timer with Website Blocker",
-    description: "A 100% free Pomodoro study timer that blocks YouTube Shorts, Instagram, and Reddit.",
-    badge: "Study Timer",
     icon: "timer",
   },
   {
@@ -167,6 +181,20 @@ export const ALL_RELATED_ARTICLES: RelatedArticle[] = [
     description: "A 100% free Pomodoro study timer that blocks YouTube Shorts, Instagram, and Reddit.",
     badge: "Study Timer",
     icon: "timer",
+  },
+  {
+    href: "/pomodoro-timer",
+    title: "Pomodoro Timer with Blocker",
+    description: "A Pomodoro timer with automated hard website blocking and AI accountability.",
+    badge: "Pomodoro Timer",
+    icon: "timer",
+  },
+  {
+    href: "/blog/best-focus-apps-for-students",
+    title: "Best Focus Apps for Students (2026)",
+    description: "Compare FlowState, Forest, Cold Turkey, Pomofocus, and Notion for deep work.",
+    badge: "Focus Apps",
+    icon: "guide",
   },
   {
     href: "/faq",

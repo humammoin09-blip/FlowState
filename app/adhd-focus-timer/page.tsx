@@ -27,6 +27,7 @@ export const metadata: Metadata = {
     "focus timer for adhd",
     "time blindness app",
     "adhd productivity tool",
+    "adhd study timer",
   ],
   alternates: {
     canonical: "https://flowstate-deepwork.vercel.app/adhd-focus-timer",
@@ -194,6 +195,12 @@ export default function AdhdFocusTimerPage() {
               How FlowState Works for ADHD
             </h2>
 
+            <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-4 text-emerald-100 text-sm leading-relaxed">
+              <p>
+                <strong>Summary: FlowState serves as an external executive function system for ADHD brains. By combining a single-task Focus Blueprint, automated browser blocking against impulsive tab switches, and an on-demand AI coach, it eliminates task paralysis and protects your dopamine during deep work.</strong>
+              </p>
+            </div>
+
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
               FlowState replaces scattered sticky notes and passive timers with two pillars designed specifically for distracted, easily overwhelmed minds: a structured <strong>Focus Blueprint</strong> and <strong>hard website blocking</strong>.
             </p>
@@ -226,10 +233,16 @@ export default function AdhdFocusTimerPage() {
             <div className="border-b border-white/10 pb-3">
               <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight flex items-center gap-2.5">
                 <Sparkles className="w-6 h-6 text-emerald-400 shrink-0" />
-                Key Features for ADHD Focus
+                Key Features (Pomodoro, AI Coach, Blocker)
               </h2>
               <p className="text-slate-400 text-sm mt-1">
                 Everything you need to beat time blindness and finish what you start.
+              </p>
+            </div>
+
+            <div className="bg-slate-900/60 border border-emerald-500/20 rounded-xl p-4 text-slate-200 text-sm leading-relaxed">
+              <p>
+                <strong>Summary: Built specifically for neurodivergent focus, FlowState combines a high-contrast Pomodoro timer to anchor time perception, an interactive AI coach to dismantle intimidating assignments into tiny first steps, and hard browser blocking that stops distraction tabs before impulse takes over.</strong>
               </p>
             </div>
 

@@ -27,6 +27,7 @@ export const metadata: Metadata = {
     "block youtube shorts",
     "youtube shorts blocker",
     "stop youtube shorts",
+    "unhook vs flowstate",
   ],
   alternates: {
     canonical: "https://flowstate-deepwork.vercel.app/vs/unhook",

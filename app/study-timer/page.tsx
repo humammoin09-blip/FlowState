@@ -28,6 +28,7 @@ export const metadata: Metadata = {
     "pomodoro timer",
     "focus timer for studying",
     "study timer with blocker",
+    "pomodoro timer with blocker",
   ],
   alternates: {
     canonical: "https://flowstate-deepwork.vercel.app/study-timer",
