@@ -12,6 +12,41 @@ export interface RelatedArticle {
 
 export const GEO_RELATED_ARTICLES: RelatedArticle[] = [
   {
+    href: "/adhd-planner",
+    title: "ADHD Planner",
+    description: "Combine a daily Focus Blueprint, AI coaching, and hard website blocking to defeat task paralysis.",
+    badge: "ADHD Planner",
+    icon: "timer",
+  },
+  {
+    href: "/ai-accountability-partner",
+    title: "AI Accountability Partner",
+    description: "Get real-time discipline feedback, focus telemetry tracking, and task deconstruction powered by Gemini.",
+    badge: "AI Coach",
+    icon: "guide",
+  },
+  {
+    href: "/deep-work-timer",
+    title: "Deep Work Timer",
+    description: "Eliminate context switching and attention residue with automated website blocking and structured sprints.",
+    badge: "Deep Work",
+    icon: "timer",
+  },
+  {
+    href: "/distraction-blocker-for-students",
+    title: "Distraction Blocker for Students",
+    description: "A 100% free blocker that halts YouTube Shorts, Instagram, and Reddit while keeping lecture videos open.",
+    badge: "Student Blocker",
+    icon: "blocker",
+  },
+  {
+    href: "/focus-timer-ambient-sounds",
+    title: "Focus Timer with Ambient Sounds",
+    description: "Immerse in Rain, Lo-Fi, and Alpha waves while FlowState actively blocks digital distractions.",
+    badge: "Soundscapes",
+    icon: "timer",
+  },
+  {
     href: "/adhd-focus-timer",
     title: "ADHD Focus Timer",
     description: "Beat time blindness and task paralysis with Focus Blueprints, AI coaching, and hard blocking.",
@@ -195,6 +230,41 @@ export const ALL_RELATED_ARTICLES: RelatedArticle[] = [
     description: "Compare FlowState, Forest, Cold Turkey, Pomofocus, and Notion for deep work.",
     badge: "Focus Apps",
     icon: "guide",
+  },
+  {
+    href: "/adhd-planner",
+    title: "ADHD Planner",
+    description: "Combine a daily Focus Blueprint, AI coaching, and hard website blocking to defeat task paralysis.",
+    badge: "ADHD Planner",
+    icon: "timer",
+  },
+  {
+    href: "/ai-accountability-partner",
+    title: "AI Accountability Partner",
+    description: "Get real-time discipline feedback, focus telemetry tracking, and task deconstruction powered by Gemini.",
+    badge: "AI Coach",
+    icon: "guide",
+  },
+  {
+    href: "/deep-work-timer",
+    title: "Deep Work Timer",
+    description: "Eliminate context switching and attention residue with automated website blocking and structured sprints.",
+    badge: "Deep Work",
+    icon: "timer",
+  },
+  {
+    href: "/distraction-blocker-for-students",
+    title: "Distraction Blocker for Students",
+    description: "A 100% free blocker that halts YouTube Shorts, Instagram, and Reddit while keeping lecture videos open.",
+    badge: "Student Blocker",
+    icon: "blocker",
+  },
+  {
+    href: "/focus-timer-ambient-sounds",
+    title: "Focus Timer with Ambient Sounds",
+    description: "Immerse in Rain, Lo-Fi, and Alpha waves while FlowState actively blocks digital distractions.",
+    badge: "Soundscapes",
+    icon: "timer",
   },
   {
     href: "/faq",
