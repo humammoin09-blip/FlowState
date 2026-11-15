@@ -1,3 +1,5 @@
+import { getLocalDateString } from "./streak-service";
+
 /**
  * Smart Streak Protection & Inactivity Notification Service
  * Sends strategic accountability browser notifications if the user hasn't logged
@@ -8,18 +10,51 @@ export function checkAndSendEveningStreakAlert(params: {
   focusHours: number;
   streakDays: number;
   dailyGoal: number;
+  hasCompletedSessionToday?: boolean;
+  thresholdHour?: number;
 }): { triggered: boolean; reason: string } {
   if (typeof window === "undefined" || !("Notification" in window)) {
     return { triggered: false, reason: "Notifications not supported in this environment" };
   }
 
-  if (Notification.permission !== "granted") {
-    return { triggered: false, reason: "Notification permission not granted" };
+  // 1. Condition: User must have an active streak > 0
+  if (!params.streakDays || params.streakDays <= 0) {
+    return { triggered: false, reason: "No active streak (> 0) to protect" };
   }
 
   const now = new Date();
   const currentHour = now.getHours(); // 0 - 23
-  const todayStr = now.toISOString().split("T")[0];
+  const todayStr = getLocalDateString(now);
+
+  // 2. Condition: Current time is past a certain threshold (late evening, default 20:00 / 8:00 PM)
+  const thresholdHour = params.thresholdHour ?? 20;
+  const isLateEvening = currentHour >= thresholdHour;
+  if (!isLateEvening) {
+    return {
+      triggered: false,
+      reason: `Current time (${currentHour}:00) is before evening threshold (${thresholdHour}:00)`,
+    };
+  }
+
+  // 3. Condition: User hasn't already completed a session today
+  let completedToday = Boolean(params.hasCompletedSessionToday) || params.focusHours > 0;
+  if (!completedToday && typeof window !== "undefined") {
+    try {
+      const activeUid = localStorage.getItem("flowstate_active_user_id") || "guest_default";
+      const lastActive =
+        localStorage.getItem(`flowstate_last_active_date_${activeUid}`) ||
+        localStorage.getItem("flowstate_last_active_date");
+      if (lastActive === todayStr) {
+        completedToday = true;
+      }
+    } catch {
+      // ignore localStorage read error
+    }
+  }
+
+  if (completedToday) {
+    return { triggered: false, reason: "User has already completed a session today" };
+  }
 
   const storageKey = `flowstate_streak_evening_alert_${todayStr}`;
   const alreadySent = localStorage.getItem(storageKey);
@@ -28,41 +63,33 @@ export function checkAndSendEveningStreakAlert(params: {
     return { triggered: false, reason: "Already alerted today" };
   }
 
-  // Evening threshold: 18:00 (6:00 PM) onwards
-  const isEvening = currentHour >= 18;
+  try {
+    const streakDays = params.streakDays;
+    const titleText = `⚠️ Your streak is about to break! (${streakDays}-day streak at risk)`;
 
-  // Condition: Inactivity or zero focus time logged by evening
-  const isInactive = params.focusHours === 0 || params.focusHours < Math.min(1, params.dailyGoal * 0.25);
+    window.dispatchEvent(
+      new CustomEvent("flowstate_new_notification", {
+        detail: {
+          title: titleText,
+          type: "streak",
+        },
+      })
+    );
 
-  if (isEvening && isInactive) {
-    try {
-      const streakText = params.streakDays > 0 ? `${params.streakDays}-day streak` : "daily momentum";
-      window.dispatchEvent(
-        new CustomEvent("flowstate_new_notification", {
-          detail: {
-            title: `⚠️ Streak Shield: Your ${streakText} will break at midnight! Lock in a focus session now.`,
-            type: "streak",
-          },
-        })
-      );
+    if (Notification.permission === "granted") {
       new Notification("⚠️ Streak Shield: Do Not Break The Chain!", {
-        body: `It's evening and you have 0 focus hours logged today. Your ${streakText} will break at midnight! Lock in a 25-minute session now.`,
+        body: `It's late evening and you haven't completed a focus session today. Your ${streakDays}-day streak is about to break at midnight! Lock in a focus session now.`,
         icon: "/favicon.ico",
         tag: "flowstate-streak-protection",
       });
-
-      localStorage.setItem(storageKey, "true");
-      return { triggered: true, reason: "Strategic evening accountability alert dispatched" };
-    } catch (err) {
-      console.warn("Failed to dispatch evening streak notification:", err);
-      return { triggered: false, reason: "Notification dispatch error" };
     }
-  }
 
-  return {
-    triggered: false,
-    reason: isEvening ? "User already has sufficient focus hours logged" : "Not evening yet (triggers at 18:00)",
-  };
+    localStorage.setItem(storageKey, "true");
+    return { triggered: true, reason: "Late evening streak break alert dispatched" };
+  } catch (err) {
+    console.warn("Failed to dispatch evening streak notification:", err);
+    return { triggered: false, reason: "Notification dispatch error" };
+  }
 }
 
 /**

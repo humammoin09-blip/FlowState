@@ -292,11 +292,14 @@ export default function FlowStateDashboard() {
       }
 
       // Smart Streak Protection Check
-      checkAndSendEveningStreakAlert({
-        focusHours: analytics.todayHours,
-        streakDays: streakState.currentStreak,
-        dailyGoal: Number(dailyGoal),
-      });
+      if (streakState.currentStreak > 0) {
+        checkAndSendEveningStreakAlert({
+          focusHours: analytics.todayHours,
+          streakDays: streakState.currentStreak,
+          dailyGoal: Number(dailyGoal),
+          hasCompletedSessionToday: analytics.todayHours > 0 || analytics.todayMins > 0,
+        });
+      }
     } catch (err) {
       console.warn("Notice: Focus sessions remote fetch failed, falling back to local cache:", err);
       if (typeof window !== "undefined") {
@@ -371,15 +374,19 @@ export default function FlowStateDashboard() {
 
   // Periodic evening streak protection alert monitor (checks every 60s & on focus)
   useEffect(() => {
+    // Only schedule monitor if user actually has an active streak
+    if (streakDays <= 0) return;
+
     const runProtectionCheck = () => {
+      if (streakDays <= 0) return;
       checkAndSendEveningStreakAlert({
         focusHours,
         streakDays,
         dailyGoal: Number(dailyGoal),
+        hasCompletedSessionToday: focusHours > 0,
       });
     };
 
-    runProtectionCheck();
     const interval = setInterval(runProtectionCheck, 60000);
     window.addEventListener("focus", runProtectionCheck);
     return () => {

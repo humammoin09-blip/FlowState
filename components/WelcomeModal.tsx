@@ -19,6 +19,7 @@ import {
   isExtensionInstalled,
   subscribeToExtension,
 } from "./InstallExtensionBanner";
+import { CHROME_STORE_URL } from "./InstallGuideModal";
 
 export const STORAGE_KEY_WELCOME_SEEN = "flowstate_welcome_modal_seen";
 
@@ -208,7 +209,16 @@ export function WelcomeModal({
                     </div>
                   </div>
 
-                  <div className="shrink-0 self-end sm:self-center">
+                  <div className="shrink-0 self-end sm:self-center flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <a
+                      href={CHROME_STORE_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all duration-200 shadow-[0_0_15px_rgba(16,185,129,0.35)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)] active:scale-95 cursor-pointer whitespace-nowrap"
+                    >
+                      <span>Install for Chrome</span>
+                      <ExternalLink className="w-3.5 h-3.5 text-slate-950" />
+                    </a>
                     <a
                       href={EDGE_STORE_URL}
                       target="_blank"
