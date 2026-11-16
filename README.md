@@ -18,7 +18,6 @@
 
 ![FlowState Dashboard](./screenshots/dashboard.png)
 
-
 > [!WARNING]
 > **FlowState requires BOTH the web app AND the Chrome extension for full functionality.** The web app coordinates timers, tasks, and coaching, while the Manifest V3 Chrome extension enforces network-level distraction blocking.
 
