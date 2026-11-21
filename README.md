@@ -56,6 +56,7 @@ Paired with a Google Gemini-powered AI Discipline Coach that delivers unapologet
 
 ---
 
+
 ## 📸 Screenshots
 
 | Focus Dashboard | Pomodoro Focus Engine |
