@@ -49,7 +49,6 @@ Paired with a Google Gemini-powered AI Discipline Coach that delivers unapologet
 - **Manifest V3 DeclarativeNetRequest**: High-performance domain blocking without browser slowdown.
 - **Granular YouTube Shorts Blocking**: High-priority rule targeting `youtube.com/shorts` while preserving access to educational tutorials.
 - **Auto-Redirect Interception**: Blocked tabs display a clean lock screen and automatically route you back to FlowState in 3 seconds.
-
 ### 📊 Consistency & Analytics
 - **Immutable Consistency Ledger**: Uncompromising record where missed sessions and broken streaks are permanently logged.
 - **Activity Heatmap**: Visual weekly consistency tracker mapping completed deep work hours.
